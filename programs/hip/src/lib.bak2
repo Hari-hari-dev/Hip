@@ -1,0 +1,380 @@
+use anchor_lang::prelude::*;
+use sha3::{Digest, Keccak256};
+use std::convert::TryInto;
+use thiserror::Error;
+
+// Define a convenient alias for our Result type.
+type Result<T> = std::result::Result<T, ProgramError>;
+
+declare_id!("HP9ucKGU9Sad7EaWjrGULC2ZSyYD1ScxVPh15QmdRmut");
+
+const DECIMALS: u64 = 1_000_000_000; // 9 decimal places
+
+#[program]
+pub mod fancoin {
+    use super::*;
+
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        let dapp = &mut ctx.accounts.dapp;
+        dapp.validators = Vec::new();
+        dapp.shards = Vec::new();
+        dapp.token_balances = Vec::new();
+        dapp.total_token_supply = 0;
+        dapp.last_seed = None;
+        dapp.last_punch_in_time = None;
+        dapp.minting_agreements = Vec::new();
+        Ok(())
+    }
+
+    pub fn punch_in(ctx: Context<PunchIn>) -> Result<()> {
+        let dapp = &mut ctx.accounts.dapp;
+        let validator = &mut ctx.accounts.validator;
+        let clock = Clock::get()?;
+        let current_time = clock.unix_timestamp;
+
+        // Simplified punch-in period check
+        if (current_time % 60) >= 10 {
+            return Err(ErrorCode::NotInPunchInPeriod.into());
+        }
+
+        let stake = get_stake(&dapp.token_balances, validator.key);
+        if stake < 32_000 * DECIMALS {
+            return Err(ErrorCode::InsufficientStake.into());
+        }
+
+        // Update validator's last activity or add new validator
+        if let Some(existing_validator) = dapp.validators.iter_mut().find(|v| v.address == *validator.key) {
+            existing_validator.last_activity = current_time;
+        } else {
+            dapp.validators.push(Validator {
+                address: *validator.key,
+                last_activity: current_time,
+            });
+        }
+
+        // Deterministic "seed" from time (not secure randomness)
+        let seed: u64 = (current_time as u64).wrapping_mul(12345);
+        dapp.last_seed = Some(seed);
+        dapp.last_punch_in_time = Some(current_time);
+
+        Ok(())
+    }
+
+    pub fn register_player(ctx: Context<RegisterPlayer>, name: String, reward_address: Pubkey) -> Result<()> {
+        let dapp = &mut ctx.accounts.dapp;
+        let player_account = &mut ctx.accounts.player;
+        let user = &ctx.accounts.user;
+
+        // Check for name collision
+        if dapp.shards.iter().any(|shard| {
+            shard.players.iter().any(|&p_key| p_key == player_account.key())
+        }) {
+            return Err(ErrorCode::PlayerNameExists.into());
+        }
+
+        player_account.name = name;
+        player_account.address = user.key();
+        player_account.reward_address = reward_address;
+        player_account.last_minted = None;
+
+        // Add player to a shard
+        let shard_capacity = 3;
+        let mut added = false;
+        for shard in &mut dapp.shards {
+            if shard.players.len() < shard_capacity {
+                shard.players.push(player_account.key());
+                added = true;
+                break;
+            }
+        }
+        if !added {
+            let new_shard = Shard {
+                players: vec![player_account.key()],
+            };
+            dapp.shards.push(new_shard);
+        }
+
+        Ok(())
+    }
+
+    pub fn submit_minting_list(ctx: Context<SubmitMintingList>, player_names: Vec<String>) -> Result<()> {
+        let dapp = &mut ctx.accounts.dapp;
+        let validator = &ctx.accounts.validator;
+        let clock = Clock::get()?;
+        let current_time = clock.unix_timestamp;
+
+        // Mint period is the inverse of punch-in
+        if (current_time % 60) < 10 {
+            return Err(ErrorCode::NotInMintPeriod.into());
+        }
+
+        // Ensure validator is registered
+        if !dapp.validators.iter().any(|v| v.address == *validator.key) {
+            return Err(ErrorCode::ValidatorNotRegistered.into());
+        }
+
+        // Validate stake
+        let stake = get_stake(&dapp.token_balances, validator.key);
+        if stake < 32_000 * DECIMALS {
+            return Err(ErrorCode::InsufficientStake.into());
+        }
+
+        // Record validator's agreements
+        for player_name in player_names {
+            if let Some(agreement) = dapp.minting_agreements.iter_mut().find(|ma| ma.player_name == player_name) {
+                agreement.validators.push(*validator.key);
+            } else {
+                dapp.minting_agreements.push(MintingAgreement {
+                    player_name: player_name.clone(),
+                    validators: vec![*validator.key],
+                });
+            }
+        }
+
+        // Finalize minting
+        let failover_tolerance = calculate_failover_tolerance(dapp.validators.len());
+        let mut successful_mints = Vec::new();
+        let mut validator_rewards = Vec::new();
+
+        for agreement in &dapp.minting_agreements {
+            if agreement.validators.len() >= 2 {
+                let first_validator = agreement.validators[0];
+                let first_group_id = calculate_group_id(&first_validator, dapp.last_seed.unwrap())?;
+
+                let mut validators_in_same_group = true;
+                for validator_key in agreement.validators.iter().skip(1) {
+                    let group_id = calculate_group_id(validator_key, dapp.last_seed.unwrap())?;
+                    let group_distance = if group_id > first_group_id {
+                        group_id - first_group_id
+                    } else {
+                        first_group_id - group_id
+                    };
+                    if group_distance > failover_tolerance as u64 {
+                        validators_in_same_group = false;
+                        break;
+                    }
+                }
+
+                if validators_in_same_group {
+                    successful_mints.push(agreement.player_name.clone());
+
+                    // Reward validators
+                    for validator_key in &agreement.validators {
+                        if let Some(entry) = validator_rewards.iter_mut().find(|(vk, _)| vk == validator_key) {
+                            entry.1 += 1_618_000_000; // 1.618 tokens scaled
+                        } else {
+                            validator_rewards.push((*validator_key, 1_618_000_000));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Mint tokens for successful players
+        for player_name in successful_mints {
+            mint_tokens_for_player(dapp, &player_name, current_time)?;
+        }
+
+        // Distribute rewards
+        for (validator_key, reward) in validator_rewards {
+            mint_tokens(dapp, &validator_key, reward);
+        }
+
+        dapp.minting_agreements.clear();
+
+        Ok(())
+    }
+}
+
+// Context structs
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(init, payer = user, space = DApp::LEN, seeds = [b"dapp"], bump)]
+    pub dapp: Account<'info, DApp>,
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct PunchIn<'info> {
+    #[account(mut, seeds = [b"dapp"], bump)]
+    pub dapp: Account<'info, DApp>,
+    pub validator: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct RegisterPlayer<'info> {
+    #[account(mut, seeds = [b"dapp"], bump)]
+    pub dapp: Account<'info, DApp>,
+    #[account(init, payer = user, space = Player::LEN)]
+    pub player: Account<'info, Player>,
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct SubmitMintingList<'info> {
+    #[account(mut, seeds = [b"dapp"], bump)]
+    pub dapp: Account<'info, DApp>,
+    pub validator: Signer<'info>,
+}
+
+// Data structures
+#[account]
+pub struct DApp {
+    pub validators: Vec<Validator>,
+    pub shards: Vec<Shard>,
+    pub token_balances: Vec<TokenBalance>,
+    pub total_token_supply: u64,
+    pub last_seed: Option<u64>,
+    pub last_punch_in_time: Option<i64>,
+    pub minting_agreements: Vec<MintingAgreement>,
+}
+
+impl DApp {
+    pub const LEN: usize = 8 + 
+        (4 + 100 * Validator::LEN) +
+        (4 + 100 * Shard::LEN) +
+        (4 + 100 * TokenBalance::LEN) +
+        8 + // total_token_supply
+        9 + // last_seed (Option<u64>)
+        9 + // last_punch_in_time (Option<i64>)
+        (4 + 100 * MintingAgreement::LEN);
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct Validator {
+    pub address: Pubkey,
+    pub last_activity: i64,
+}
+
+impl Validator {
+    pub const LEN: usize = 32 + 8; // Pubkey + i64
+}
+
+#[account]
+pub struct Player {
+    pub name: String,
+    pub address: Pubkey,
+    pub reward_address: Pubkey,
+    pub last_minted: Option<i64>,
+}
+
+impl Player {
+    pub const LEN: usize =
+        4 + 32 + // name
+        32 +     // address
+        32 +     // reward_address
+        9;       // last_minted (Option<i64>)
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct Shard {
+    pub players: Vec<Pubkey>,
+}
+
+impl Shard {
+    pub const LEN: usize = 4 + (100 * 32);
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct TokenBalance {
+    pub address: Pubkey,
+    pub balance: u64,
+}
+
+impl TokenBalance {
+    pub const LEN: usize = 32 + 8;
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct MintingAgreement {
+    pub player_name: String,
+    pub validators: Vec<Pubkey>,
+}
+
+impl MintingAgreement {
+    pub const LEN: usize = 4 + 32 + (4 + 100 * 32);
+}
+
+// Helper functions
+fn get_stake(token_balances: &Vec<TokenBalance>, address: &Pubkey) -> u64 {
+    token_balances.iter()
+        .find(|tb| &tb.address == address)
+        .map(|tb| tb.balance)
+        .unwrap_or(0)
+}
+
+fn calculate_failover_tolerance(total_validators: usize) -> usize {
+    let total_groups = (total_validators + 3) / 4;
+    let num_digits = total_groups.to_string().len();
+    num_digits + 1
+}
+
+fn calculate_group_id(address: &Pubkey, seed: u64) -> Result<u64> {
+    let mut hasher = Keccak256::new();
+    hasher.update(address.to_bytes());
+    hasher.update(&seed.to_le_bytes());
+    let result = hasher.finalize();
+    let hash_value: [u8; 8] = result[0..8]
+        .try_into()
+        .map_err(|_| ProgramError::from(ErrorCode::HashConversionError))?;
+
+    Ok(u64::from_be_bytes(hash_value))
+}
+
+fn mint_tokens_for_player(dapp: &mut Account<DApp>, _player_name: &str, _current_time: i64) -> Result<()> {
+    // Simplified: Just mint a fixed amount of tokens for demonstration.
+    let player_pubkey = Pubkey::default();
+    mint_tokens(dapp, &player_pubkey, 1_000_000_000);
+    Ok(())
+}
+
+fn mint_tokens(dapp: &mut Account<DApp>, address: &Pubkey, amount: u64) {
+    if let Some(balance_entry) = dapp.token_balances.iter_mut().find(|tb| tb.address == *address) {
+        balance_entry.balance += amount;
+    } else {
+        dapp.token_balances.push(TokenBalance {
+            address: *address,
+            balance: amount,
+        });
+    }
+    dapp.total_token_supply += amount;
+}
+
+// Error definitions
+#[derive(Error, Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ErrorCode {
+    #[error("Unauthorized.")]
+    Unauthorized,
+    #[error("Not in punch-in period.")]
+    NotInPunchInPeriod,
+    #[error("Not in mint period.")]
+    NotInMintPeriod,
+    #[error("Insufficient stake. Minimum 32,000 tokens required to punch in.")]
+    InsufficientStake,
+    #[error("Player name already exists.")]
+    PlayerNameExists,
+    #[error("Validator not registered.")]
+    ValidatorNotRegistered,
+    #[error("Hash conversion error.")]
+    HashConversionError,
+    #[error("Invalid timestamp.")]
+    InvalidTimestamp,
+    #[error("Game number mismatch.")]
+    GameNumberMismatch,
+    #[error("Game status has already been set and cannot be changed.")]
+    GameStatusAlreadySet,
+    #[error("Game is blacklisted.")]
+    GameIsBlacklisted,
+    #[error("Game is not whitelisted.")]
+    GameNotWhitelisted,
+}
+
+impl From<ErrorCode> for ProgramError {
+    fn from(e: ErrorCode) -> Self {
+        ProgramError::Custom(e as u32)
+    }
+}

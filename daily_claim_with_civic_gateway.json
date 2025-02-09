@@ -1,0 +1,227 @@
+{
+  "version": "0.1.0",
+  "name": "daily_claim_with_civic_gateway",
+  "instructions": [
+    {
+      "name": "initialize",
+      "docs": [
+        "(1) Initialize global settings:",
+        "- `daily_amount`: tokens minted per day",
+        "- `gatekeeper_network`: used for verifying face-scan or gateway pass"
+      ],
+      "accounts": [
+        {
+          "name": "settings",
+          "isMut": true,
+          "isSigner": false,
+          "docs": [
+            "Global settings PDA"
+          ]
+        },
+        {
+          "name": "mintAuthority",
+          "isMut": false,
+          "isSigner": false,
+          "docs": [
+            "The program-derived mint authority"
+          ]
+        },
+        {
+          "name": "mint",
+          "isMut": true,
+          "isSigner": false,
+          "docs": [
+            "The token mint"
+          ]
+        },
+        {
+          "name": "authority",
+          "isMut": true,
+          "isSigner": true,
+          "docs": [
+            "Payer + admin"
+          ]
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "rent",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "dailyAmount",
+          "type": "u64"
+        },
+        {
+          "name": "gatekeeperNetwork",
+          "type": "publicKey"
+        }
+      ]
+    },
+    {
+      "name": "registerUser",
+      "docs": [
+        "(2) Register a new user by creating a small PDA for them"
+      ],
+      "accounts": [
+        {
+          "name": "settings",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "userState",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "user",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "rent",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim",
+      "docs": [
+        "(3) Claim tokens:",
+        "- Check user’s gateway token",
+        "- Enforce 5-minute cooldown",
+        "- Calculate pro-rated daily emission",
+        "- Mint tokens to user’s ATA"
+      ],
+      "accounts": [
+        {
+          "name": "settings",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "userState",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "user",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "mint",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "mintAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "recipientTokenAccount",
+          "isMut": true,
+          "isSigner": false,
+          "docs": [
+            "The user’s associated token account for receiving minted tokens"
+          ]
+        },
+        {
+          "name": "gatewayToken",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "associatedTokenProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "rent",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Settings",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "publicKey"
+          },
+          {
+            "name": "gatekeeperNetwork",
+            "type": "publicKey"
+          },
+          {
+            "name": "mint",
+            "type": "publicKey"
+          },
+          {
+            "name": "dailyAmount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UserState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "publicKey"
+          },
+          {
+            "name": "lastClaimTimestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "TooSoon",
+      "msg": "You must wait 5 minutes between claims."
+    },
+    {
+      "code": 6001,
+      "name": "InvalidGatewayToken",
+      "msg": "Invalid or missing gateway token."
+    }
+  ]
+}
