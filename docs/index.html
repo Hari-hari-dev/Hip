@@ -151,7 +151,7 @@
         );
       const [userPda, userBump] =
         await solanaWeb3.PublicKey.findProgramAddress(
-          [new TextEncoder().encode("user"), userPk.toBuffer()],
+
           PROGRAM_ID
         );
 
@@ -195,7 +195,7 @@
         PROGRAM_ID
       );
       const [userPda, userBump] = await solanaWeb3.PublicKey.findProgramAddress(
-        //[new TextEncoder().encode("user"), userPk.toBuffer()],
+
         PROGRAM_ID
       );
       const [mintAuthPda, mintAuthBump] = await solanaWeb3.PublicKey.findProgramAddress(
@@ -267,9 +267,7 @@
       const mintPk = new solanaWeb3.PublicKey(mintStr);
       const [pda] = await solanaWeb3.PublicKey.findProgramAddress(
         [
-          //userPk.toBuffer(),
-          //tokenProgramPk.toBuffer(),
-          //mintPk.toBuffer()
+
         ],
         solanaWeb3.ASSOCIATED_TOKEN_PROGRAM_ID
       );
