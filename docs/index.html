@@ -186,6 +186,8 @@
           [new TextEncoder().encode("settings")],
           PROGRAM_ID
         );
+      log("CLAIM: walletPublicKey=" + (walletPublicKey.toBase58?.()));
+
       const [userPda, userBump] =
         await solanaWeb3.PublicKey.findProgramAddress(
           [new TextEncoder().encode("user"), walletPublicKey.toBase58?.()],
