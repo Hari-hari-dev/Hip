@@ -5,6 +5,7 @@ use anchor_spl::{
     token::{self, Mint, MintTo, Token, TokenAccount},
 };
 use solana_gateway::Gateway; // For verifying the gateway token
+use std::str::FromStr;
 
 declare_id!("4DJBep6Jm34REZUnjr1NjEZiwqzm2pS1cjpiejvG2iUF");
 
@@ -12,6 +13,7 @@ declare_id!("4DJBep6Jm34REZUnjr1NjEZiwqzm2pS1cjpiejvG2iUF");
 pub const SETTINGS_SEED: &[u8] = b"settings";
 pub const USER_SEED: &[u8] = b"user";
 pub const MINT_AUTH_SEED: &[u8] = b"mint_authority";
+const HARDCODED_DAILY_AMOUNT: u64 = 1440;
 
 // 5-minute (300-second) cooldown
 pub const COOLDOWN_SECONDS: i64 = 300;
@@ -25,14 +27,17 @@ pub mod daily_claim_with_civic_gateway {
     ///     - `gatekeeper_network`: used for verifying face-scan or gateway pass
     pub fn initialize(
         ctx: Context<Initialize>,
-        daily_amount: u64,
-        gatekeeper_network: Pubkey,
+        //daily_amount: u64,
+        //gatekeeper_network: Pubkey,
     ) -> Result<()> {
+
+        let hardcoded_gkn = Pubkey::from_str("uniqobk8oGh4XBLMqM68K8M2zNu3CdYX7q5go7whQiv").unwrap();
+
         let settings = &mut ctx.accounts.settings;
         settings.authority = ctx.accounts.authority.key();
-        settings.gatekeeper_network = gatekeeper_network;
+        settings.gatekeeper_network = hardcoded_gkn;
         settings.mint = ctx.accounts.mint.key();
-        settings.daily_amount = daily_amount;
+        settings.daily_amount = HARDCODED_DAILY_AMOUNT;
         Ok(())
     }
 

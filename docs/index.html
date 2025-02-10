@@ -1,10 +1,169 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Hello World Example</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Claim with Cooldown</title>
+    <script src="https://cdn.jsdelivr.net/npm/@project-serum/anchor@0.30.1/dist/anchor.min.js"></script>
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
 </head>
 <body>
-  <h1>Hello, world!</h1>
+    <h1>Daily Claim with Cooldown</h1>
+    <button id="connectWallet">Connect Wallet</button>
+    <button id="initialize">Initialize Program</button>
+    <button id="registerUser">Register User</button>
+    <button id="claimTokens">Claim Tokens</button>
+
+    <script>
+        // Replace with your program ID
+        const PROGRAM_ID = new anchor.web3.PublicKey("yQfuHCNR7EBZfpacpniXtFVRc4QZ4Qj4XRCfN4xosLH");
+
+        // Anchor provider and program setup
+        let provider;
+        let program;
+        let wallet;
+
+        // Connect to Phantom wallet
+        document.getElementById('connectWallet').addEventListener('click', async () => {
+            if (window.solana) {
+                wallet = window.solana;
+                await wallet.connect();
+                console.log("Connected to wallet:", wallet.publicKey.toString());
+
+                provider = new anchor.AnchorProvider(
+                    new anchor.web3.Connection("https://api.devnet.solana.com"), // Use devnet for testing
+                    wallet,
+                    { commitment: "confirmed" }
+                );
+                anchor.setProvider(provider);
+
+                // Load the program
+                const idl = await anchor.Program.fetchIdl(PROGRAM_ID, provider);
+                program = new anchor.Program(idl, PROGRAM_ID, provider);
+                console.log("Program loaded:", program);
+            } else {
+                alert("Phantom wallet not found!");
+            }
+        });
+
+        // Initialize the program
+        document.getElementById('initialize').addEventListener('click', async () => {
+            if (!program) {
+                alert("Please connect your wallet first.");
+                return;
+            }
+
+            const dailyAmount = 1440; // Example daily amount
+            const mint = anchor.web3.Keypair.generate(); // Replace with your mint public key
+            const settingsPda = await anchor.web3.PublicKey.findProgramAddress(
+                [Buffer.from("settings")],
+                program.programId
+            );
+            const mintAuthorityPda = await anchor.web3.PublicKey.findProgramAddress(
+                [Buffer.from("settings"), Buffer.from("mint_authority")],
+                program.programId
+            );
+
+            try {
+                const tx = await program.methods.initialize(dailyAmount)
+                    .accounts({
+                        settings: settingsPda,
+                        mintAuthority: mintAuthorityPda,
+                        mint: mint.publicKey,
+                        authority: wallet.publicKey,
+                        systemProgram: anchor.web3.SystemProgram.programId,
+                        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+                    })
+                    .rpc();
+                console.log("Initialized with tx:", tx);
+                alert("Program initialized successfully!");
+            } catch (error) {
+                console.error("Error initializing program:", error);
+                alert("Failed to initialize program.");
+            }
+        });
+
+        // Register a new user
+        document.getElementById('registerUser').addEventListener('click', async () => {
+            if (!program) {
+                alert("Please connect your wallet first.");
+                return;
+            }
+
+            const settingsPda = await anchor.web3.PublicKey.findProgramAddress(
+                [Buffer.from("settings")],
+                program.programId
+            );
+            const userStatePda = await anchor.web3.PublicKey.findProgramAddress(
+                [Buffer.from("user"), wallet.publicKey.toBuffer()],
+                program.programId
+            );
+
+            try {
+                const tx = await program.methods.registerUser()
+                    .accounts({
+                        settings: settingsPda,
+                        userState: userStatePda,
+                        user: wallet.publicKey,
+                        systemProgram: anchor.web3.SystemProgram.programId,
+                        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+                    })
+                    .rpc();
+                console.log("User registered with tx:", tx);
+                alert("User registered successfully!");
+            } catch (error) {
+                console.error("Error registering user:", error);
+                alert("Failed to register user.");
+            }
+        });
+
+        // Claim tokens
+        document.getElementById('claimTokens').addEventListener('click', async () => {
+            if (!program) {
+                alert("Please connect your wallet first.");
+                return;
+            }
+
+            const settingsPda = await anchor.web3.PublicKey.findProgramAddress(
+                [Buffer.from("settings")],
+                program.programId
+            );
+            const userStatePda = await anchor.web3.PublicKey.findProgramAddress(
+                [Buffer.from("user"), wallet.publicKey.toBuffer()],
+                program.programId
+            );
+            const mint = anchor.web3.Keypair.generate(); // Replace with your mint public key
+            const mintAuthorityPda = await anchor.web3.PublicKey.findProgramAddress(
+                [Buffer.from("settings"), Buffer.from("mint_authority")],
+                program.programId
+            );
+            const recipientTokenAccount = await anchor.utils.token.associatedAddress({
+                mint: mint.publicKey,
+                owner: wallet.publicKey,
+            });
+
+            try {
+                const tx = await program.methods.claim()
+                    .accounts({
+                        settings: settingsPda,
+                        userState: userStatePda,
+                        user: wallet.publicKey,
+                        mint: mint.publicKey,
+                        mintAuthority: mintAuthorityPda,
+                        recipientTokenAccount: recipientTokenAccount,
+                        systemProgram: anchor.web3.SystemProgram.programId,
+                        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+                        associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
+                        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+                    })
+                    .rpc();
+                console.log("Tokens claimed with tx:", tx);
+                alert("Tokens claimed successfully!");
+            } catch (error) {
+                console.error("Error claiming tokens:", error);
+                alert("Failed to claim tokens.");
+            }
+        });
+    </script>
 </body>
 </html>

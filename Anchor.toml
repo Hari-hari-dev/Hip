@@ -12,7 +12,7 @@ hip = "4DJBep6Jm34REZUnjr1NjEZiwqzm2pS1cjpiejvG2iUF"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "mainnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

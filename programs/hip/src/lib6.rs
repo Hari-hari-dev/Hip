@@ -5,7 +5,7 @@ use anchor_spl::{
 };
 
 // Replace with your own program ID
-declare_id!("11111111111111111111111111111111");
+declare_id!("yQfuHCNR7EBZfpacpniXtFVRc4QZ4Qj4XRCfN4xosLH");
 
 // Seeds
 pub const SETTINGS_SEED: &[u8] = b"settings";
