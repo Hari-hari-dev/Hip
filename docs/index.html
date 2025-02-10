@@ -267,9 +267,9 @@
       const mintPk = new solanaWeb3.PublicKey(mintStr);
       const [pda] = await solanaWeb3.PublicKey.findProgramAddress(
         [
-          userPk.toBuffer(),
-          tokenProgramPk.toBuffer(),
-          mintPk.toBuffer()
+          //userPk.toBuffer(),
+          //tokenProgramPk.toBuffer(),
+          //mintPk.toBuffer()
         ],
         solanaWeb3.ASSOCIATED_TOKEN_PROGRAM_ID
       );
