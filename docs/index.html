@@ -151,7 +151,7 @@
         );
       const [userPda, userBump] =
         await solanaWeb3.PublicKey.findProgramAddress(
-
+          [new TextEncoder().encode("user"), userPk.toBuffer()],
           PROGRAM_ID
         );
 
@@ -188,14 +188,14 @@
     // -------------------------------------------
     async function sendClaimIx() {
       // Derive PDAs
-      const userStr = "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx";
+      const userStr = ;
       const userPk = new solanaWeb3.PublicKey(userStr);
       const [settingsPda, settingsBump] = await solanaWeb3.PublicKey.findProgramAddress(
         [new TextEncoder().encode("settings")],
         PROGRAM_ID
       );
       const [userPda, userBump] = await solanaWeb3.PublicKey.findProgramAddress(
-
+        [new TextEncoder().encode("user"), "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx"],
         PROGRAM_ID
       );
       const [mintAuthPda, mintAuthBump] = await solanaWeb3.PublicKey.findProgramAddress(
@@ -259,15 +259,17 @@
 
     // A small utility to derive the ATA if you don't have @solana/spl-token
     async function findAssociatedTokenAddress(walletPk, _mintPk) {
-      const userStr = "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx";
+      const userStr = ;
       const userPk = new solanaWeb3.PublicKey(userStr);
-      const tokenProgramStr = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-      const mintStr = "AgzJtvzqQ2ZP5fXo3DmJq5Hv1Tz1Vm4tAg8fPNgHAHDa";
+      const tokenProgramStr = ;
+      const mintStr = ;
       const tokenProgramPk = new solanaWeb3.PublicKey(tokenProgramStr);
       const mintPk = new solanaWeb3.PublicKey(mintStr);
       const [pda] = await solanaWeb3.PublicKey.findProgramAddress(
         [
-
+          "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx",
+          "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "AgzJtvzqQ2ZP5fXo3DmJq5Hv1Tz1Vm4tAg8fPNgHAHDa"
         ],
         solanaWeb3.ASSOCIATED_TOKEN_PROGRAM_ID
       );
