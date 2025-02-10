@@ -195,7 +195,7 @@
         PROGRAM_ID
       );
       const [userPda, userBump] = await solanaWeb3.PublicKey.findProgramAddress(
-        [new TextEncoder().encode("user"), userPk.toBuffer()],
+        //[new TextEncoder().encode("user"), userPk.toBuffer()],
         PROGRAM_ID
       );
       const [mintAuthPda, mintAuthBump] = await solanaWeb3.PublicKey.findProgramAddress(
