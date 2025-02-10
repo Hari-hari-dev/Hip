@@ -151,14 +151,14 @@
         );
       const [userPda, userBump] =
         await solanaWeb3.PublicKey.findProgramAddress(
-          [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
+          [new TextEncoder().encode("user"), userPk.toBuffer()],
           PROGRAM_ID
         );
 
       const keys = [
         { pubkey: settingsPda,    isSigner: false, isWritable: false },
         { pubkey: userPda,        isSigner: false, isWritable: true },
-        { pubkey: walletPublicKey, isSigner: true,  isWritable: true },
+        { pubkey: userPk, isSigner: true,  isWritable: true },
         { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
         { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       ];
@@ -174,7 +174,7 @@
       });
 
       const tx = new solanaWeb3.Transaction().add(ix);
-      tx.feePayer = walletPublicKey;
+      tx.feePayer = userPk;
       tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
 
       const signedTx = await window.solana.signTransaction(tx);
@@ -188,6 +188,8 @@
     // -------------------------------------------
     async function sendClaimIx() {
       // Derive PDAs
+      const userStr = "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx";
+      const userPk = new solanaWeb3.PublicKey(userStr);
       const [settingsPda, settingsBump] = await solanaWeb3.PublicKey.findProgramAddress(
         [new TextEncoder().encode("settings")],
         PROGRAM_ID
@@ -225,7 +227,7 @@
       const keys = [
         { pubkey: settingsPda,         isSigner: false, isWritable: false },
         { pubkey: userPda,             isSigner: false, isWritable: true },
-        { pubkey: walletPublicKey,     isSigner: true,  isWritable: true },
+        { pubkey: userPk,     isSigner: true,  isWritable: true },
         { pubkey: mintPubkey,          isSigner: false, isWritable: true },
         { pubkey: mintAuthPda,         isSigner: false, isWritable: false },
         { pubkey: associatedTokenAccount, isSigner: false, isWritable: true },
