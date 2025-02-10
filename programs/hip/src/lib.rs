@@ -7,71 +7,97 @@ use anchor_spl::{
 use solana_gateway::Gateway; // For verifying the gateway token
 use std::str::FromStr;
 
-// Your program ID
-declare_id!("HcHjwxcjSmxjs9dEcW9VmnbxcNTN9esajfsMGf9VdPme");
+declare_id!("GuiCTxaLCfB6gLXf6yohxKU9X6mAUCWDqv2vnssCAytG");
 
-// Seeds & Constants
+// --------------------------------------------------------------------
+// Constants & Seeds
+// --------------------------------------------------------------------
 pub const SETTINGS_SEED: &[u8] = b"settings";
 pub const USER_SEED: &[u8] = b"user";
 pub const MINT_AUTH_SEED: &[u8] = b"mint_authority";
 
-// The SPL mint you want to use forever
+// If you still want a fallback "HARDCODED_MINT_STR", you can keep it, 
+// but now we have an on-chain 'initialize_mint' that overrides it.
 pub const HARDCODED_MINT_STR: &str = "G5GTbUoq8YdCNYdwVS9Mt348jPAdUFwqMb99AUWJjp1o";
+
 const HARDCODED_DAILY_AMOUNT: u64 = 1440;
 pub const COOLDOWN_SECONDS: i64 = 300; // 5 minutes
 
+// --------------------------------------------------------------------
+// Program
+// --------------------------------------------------------------------
 #[program]
 pub mod daily_claim_with_civic_gateway {
     use super::*;
 
-    /// (1) Initialize global settings:
-    /// We skip passing in a mint or GKN from the client.
-    /// Instead, we hardcode them in the code (below).
+    /// (A) Initialize the main `Settings` account: 
+    ///     - Hardcode a gatekeeper network
+    ///     - Optionally store a fallback mint, which can be overridden by `initialize_mint`.
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        // Hardcode the gatekeeper network
         let hardcoded_gkn = Pubkey::from_str("uniqobk8oGh4XBLMqM68K8M2zNu3CdYX7q5go7whQiv")
             .expect("Invalid GKN Pubkey literal");
 
-        // Hardcode your SPL token mint
-        let hardcoded_mint =
-            Pubkey::from_str(HARDCODED_MINT_STR).expect("Invalid Hardcoded Mint Pubkey literal");
+        // let fallback_mint = Pubkey::from_str(HARDCODED_MINT_STR)
+        //     .expect("Invalid Hardcoded Mint Pubkey literal");
 
         let settings = &mut ctx.accounts.settings;
         settings.authority = ctx.accounts.authority.key();
         settings.gatekeeper_network = hardcoded_gkn;
-        settings.mint = hardcoded_mint;
+        //settings.mint = fallback_mint; 
         settings.daily_amount = HARDCODED_DAILY_AMOUNT;
 
-        msg!("Initialized with mint: {}", settings.mint);
+        msg!("Initialized => gatekeeper={}", hardcoded_gkn);
         Ok(())
     }
 
-    /// (2) Register a new user by creating a small PDA for them.
+    /// (B) Initialize an on-chain mint, store it in `settings.mint`.
+    ///     This way, you don't rely on HARDCODED_MINT_STR. 
+    ///     The user can pay for the creation of a brand new token mint with the provided decimals.
+    pub fn initialize_mint(ctx: Context<InitializeMint>) -> Result<()> {
+        let settings = &mut ctx.accounts.settings;
+        // Overwrite the fallback_mint with the newly created one
+        settings.mint = ctx.accounts.mint_for_dapp.key();
+
+        // Save the bump in our MintAuthority
+        let bump = ctx.bumps.mint_authority;
+        ctx.accounts.mint_authority.bump = bump;
+
+        msg!("New SPL Mint created => pubkey={}", settings.mint);
+        Ok(())
+    }
+
+    /// (C) Register a new user by creating a small PDA for them.
+    ///     Also create (or init_if_needed) the user's ATA for `settings.mint`.
     pub fn register_user(ctx: Context<RegisterUser>) -> Result<()> {
         let user_state = &mut ctx.accounts.user_state;
         user_state.user = ctx.accounts.user.key();
         user_state.last_claim_timestamp = Clock::get()?.unix_timestamp;
+
+        msg!(
+            "Registered user => user_pda={}, ATA={}",
+            user_state.key(),
+            ctx.accounts.user_ata.key()
+        );
         Ok(())
     }
 
-    /// (3) Claim tokens:
-    ///     - Check user’s gateway token
-    ///     - Enforce 5-minute cooldown
-    ///     - Calculate pro-rated daily emission
-    ///     - Mint tokens to user’s ATA
+    /// (D) Claim tokens:
+    ///     - Check user’s civic pass
+    ///     - Enforce 5-min cooldown
+    ///     - Calculate prorated daily emission
+    ///     - Mint tokens to user's ATA
     pub fn claim(ctx: Context<Claim>) -> Result<()> {
         let settings = &ctx.accounts.settings;
         let user_state = &mut ctx.accounts.user_state;
 
-        // 0) Civic Gateway check
+        // 0) Civic check
         let gateway_token_info = ctx.accounts.gateway_token.to_account_info();
         Gateway::verify_gateway_token_account_info(
             &gateway_token_info,
             &ctx.accounts.user.key(),
             &settings.gatekeeper_network,
             None,
-        )
-        .map_err(|_e| {
+        ).map_err(|_e| {
             msg!("Gateway token account verification failed");
             error!(ErrorCode::InvalidGatewayToken)
         })?;
@@ -81,13 +107,13 @@ pub mod daily_claim_with_civic_gateway {
         let now = Clock::get()?.unix_timestamp;
         let delta = now.saturating_sub(user_state.last_claim_timestamp);
 
-        // 2) 5-minute cooldown
+        // 2) Enforce 5-min cooldown
         if delta < COOLDOWN_SECONDS {
             msg!("You must wait at least 5 minutes between claims.");
             return err!(ErrorCode::TooSoon);
         }
 
-        // 3) Calculate daily emission for the time elapsed (cap at 7 days)
+        // 3) Time-based daily emission (cap at 7 days)
         let capped_delta = delta.min(7 * 86400);
         let tokens_per_second = settings.daily_amount as f64 / 86400.0;
         let minted_float = tokens_per_second * (capped_delta as f64);
@@ -96,19 +122,19 @@ pub mod daily_claim_with_civic_gateway {
         // Update last_claim_timestamp
         user_state.last_claim_timestamp = now;
 
-        // 4) Mint tokens if minted_amount > 0
         if minted_amount > 0 {
+            // Use the minted authority seeds to sign
             let settings_bump = ctx.bumps.settings;
             let mint_auth_bump = ctx.bumps.mint_authority;
-
             let signer_seeds = &[
-                super::SETTINGS_SEED,
+                SETTINGS_SEED,
                 &[settings_bump],
-                super::MINT_AUTH_SEED,
+                MINT_AUTH_SEED,
                 &[mint_auth_bump],
             ];
             let signer = &[&signer_seeds[..]];
 
+            // CPI to mint to the user's ATA
             token::mint_to(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
@@ -121,19 +147,18 @@ pub mod daily_claim_with_civic_gateway {
                 ),
                 minted_amount,
             )?;
-
-            msg!("Minted {} tokens for user {}", minted_amount, user_state.user);
+            msg!("Minted {} tokens => user={}", minted_amount, user_state.user);
         } else {
-            msg!("No tokens minted (insufficient time elapsed).");
+            msg!("No tokens minted => insufficient time elapsed.");
         }
 
         Ok(())
     }
 }
 
-// -----------------------------------------------------------
+// --------------------------------------------------------------------
 // Accounts + PDAs
-// -----------------------------------------------------------
+// --------------------------------------------------------------------
 
 #[account]
 pub struct Settings {
@@ -143,8 +168,7 @@ pub struct Settings {
     pub daily_amount: u64,          // Tokens minted per day
 }
 impl Settings {
-    // 8 + 32 + 32 + 32 + 8 = 112
-    pub const SIZE: usize = 8 + 32 + 32 + 32 + 8;
+    pub const SIZE: usize = 8 + 32 + 32 + 32 + 8; // 112
 }
 
 #[account]
@@ -153,17 +177,21 @@ pub struct UserState {
     pub last_claim_timestamp: i64,
 }
 impl UserState {
-    // 8 + 32 + 8 = 48
-    pub const SIZE: usize = 8 + 32 + 8;
+    pub const SIZE: usize = 8 + 32 + 8; // 48
 }
 
-// -----------------------------------------------------------
-// Instruction Contexts
-// -----------------------------------------------------------
+#[account]
+pub struct MintAuthority {
+    pub bump: u8,
+}
 
+// --------------------------------------------------------------------
+// Instruction Contexts
+// --------------------------------------------------------------------
+
+/// (A) Initialize the main settings
 #[derive(Accounts)]
 pub struct Initialize<'info> {
-    /// Global settings PDA
     #[account(
         init,
         payer = authority,
@@ -173,26 +201,72 @@ pub struct Initialize<'info> {
     )]
     pub settings: Account<'info, Settings>,
 
-    /// The program-derived mint authority
+    /// The derived mint authority
     #[account(
         seeds = [SETTINGS_SEED, MINT_AUTH_SEED],
         bump
     )]
-    /// CHECK: Just a PDA signer, no data.
+    /// CHECK: Just a PDA signer, no data
     pub mint_authority: UncheckedAccount<'info>,
 
-    /// Payer + admin
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: Signer<'info>, // Payer + Admin
 
     #[account(address = system_program::ID)]
     pub system_program: Program<'info, System>,
+
     pub rent: Sysvar<'info, Rent>,
 }
 
+/// (B) Create a new SPL Mint on-chain, store it in `settings`
+#[derive(Accounts)]
+pub struct InitializeMint<'info> {
+    #[account(
+        mut,
+        seeds = [SETTINGS_SEED],
+        bump
+    )]
+    pub settings: Account<'info, Settings>,
+
+    // We'll store the bump in here
+    #[account(
+        init,
+        payer = payer,
+        seeds = [b"mint_authority"],
+        space = 8 + 1,
+        bump
+    )]
+    pub mint_authority: Account<'info, MintAuthority>,
+
+    // Actually create the SPL Mint on-chain
+    #[account(
+        init,
+        payer = payer,
+        seeds = [b"my_spl_mint"], // or any other unique seed
+        bump,
+        mint::decimals = 6,
+        mint::authority = mint_authority,
+        mint::freeze_authority = mint_authority
+    )]
+    pub mint_for_dapp: Account<'info, Mint>,
+
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    #[account(address = token::ID)]
+    pub token_program: Program<'info, Token>,
+
+    #[account(address = system_program::ID)]
+    pub system_program: Program<'info, System>,
+
+    pub rent: Sysvar<'info, Rent>,
+}
+
+/// (C) RegisterUser: 
+///     - Create a small `UserState` account 
+///     - Also create (or reuse) the user's ATA for `settings.mint`
 #[derive(Accounts)]
 pub struct RegisterUser<'info> {
-    // Keep your existing references
     #[account(
         seeds = [SETTINGS_SEED],
         bump
@@ -211,16 +285,15 @@ pub struct RegisterUser<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
-    // Now bring in the mint that you want to make an ATA for.
-    // We can enforce that it matches the settings.mint if you want:
+    // We expect the mint to either be the fallback or a newly created one
+    // that got stored in `settings.mint`.
     #[account(
         mut,
         constraint = mint.key() == settings.mint
     )]
     pub mint: Account<'info, Mint>,
 
-    // The ATA for `user` + `mint`.
-    // This ensures an associated token account is created if it doesn’t already exist.
+    // The user’s ATA for that mint
     #[account(
         init_if_needed,
         payer = user,
@@ -232,16 +305,12 @@ pub struct RegisterUser<'info> {
     #[account(address = system_program::ID)]
     pub system_program: Program<'info, System>,
 
-    // The associated token program is needed to create the ATA.
     pub associated_token_program: Program<'info, AssociatedToken>,
-
-    // The token program is needed if we do any further token instructions
     pub token_program: Program<'info, Token>,
-
     pub rent: Sysvar<'info, Rent>,
 }
 
-
+/// (D) Claim
 #[derive(Accounts)]
 pub struct Claim<'info> {
     #[account(
@@ -260,21 +329,20 @@ pub struct Claim<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
-    /// We'll ensure that the `mint.key() == settings.mint` at runtime
     #[account(
         mut,
         constraint = mint.key() == settings.mint
     )]
     pub mint: Account<'info, Mint>,
 
+    // Our derived mint authority
     #[account(
         seeds = [SETTINGS_SEED, MINT_AUTH_SEED],
         bump
     )]
-    /// CHECK: program-derived signer
+    /// CHECK: Just a PDA signer
     pub mint_authority: UncheckedAccount<'info>,
 
-    /// The user’s associated token account
     #[account(
         init_if_needed,
         payer = user,
@@ -283,7 +351,7 @@ pub struct Claim<'info> {
     )]
     pub recipient_token_account: Account<'info, TokenAccount>,
 
-    /// CHECK: Verified at runtime with `Gateway::verify_gateway_token_account_info`
+    /// CHECK: Verified at runtime with `Gateway::verify_gateway_token_account_info(...)`
     pub gateway_token: UncheckedAccount<'info>,
 
     #[account(address = system_program::ID)]
@@ -294,9 +362,9 @@ pub struct Claim<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-// -----------------------------------------------------------
-// Errors
-// -----------------------------------------------------------
+// --------------------------------------------------------------------
+// Error codes
+// --------------------------------------------------------------------
 #[error_code]
 pub enum ErrorCode {
     #[msg("You must wait 5 minutes between claims.")]
