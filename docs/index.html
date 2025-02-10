@@ -251,14 +251,20 @@
       await connection.confirmTransaction(txSig);
       log("Claim Tx Sig: " + txSig);
     }
+    const userStr = "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx";
+    const tokenProgramStr = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+    const mintStr = "AgzJtvzqQ2ZP5fXo3DmJq5Hv1Tz1Vm4tAg8fPNgHAHDa";
+    const userPk = new solanaWeb3.PublicKey(userStr);
+    const tokenProgramPk = new solanaWeb3.PublicKey(tokenProgramStr);
+    const mintPk = new solanaWeb3.PublicKey(mintStr);
 
     // A small utility to derive the ATA if you don't have @solana/spl-token
     async function findAssociatedTokenAddress(walletPk, mintPk) {
       const [pda] = await solanaWeb3.PublicKey.findProgramAddress(
         [
-          "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx",
-          "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "AgzJtvzqQ2ZP5fXo3DmJq5Hv1Tz1Vm4tAg8fPNgHAHDa",
+          userPk.toBuffer(),
+          tokenProgramPk.toBuffer(),
+          mintPk.toBuffer()
         ],
         solanaWeb3.ASSOCIATED_TOKEN_PROGRAM_ID
       );
