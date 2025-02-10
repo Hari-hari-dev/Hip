@@ -191,7 +191,7 @@
         PROGRAM_ID
       );
       const [userPda, userBump] = await solanaWeb3.PublicKey.findProgramAddress(
-        [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
+        [new TextEncoder().encode("user"), "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx"],
         PROGRAM_ID
       );
       const [mintAuthPda, mintAuthBump] = await solanaWeb3.PublicKey.findProgramAddress(
@@ -209,7 +209,7 @@
       );
 
       // The civic gateway token address
-      const gatewayTokenStr = "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx"; 
+      const gatewayTokenStr = "uniqobk8oGh4XBLMqM68K8M2zNu3CdYX7q5go7whQiv"; 
       const gatewayTokenAddress = new solanaWeb3.PublicKey(gatewayTokenStr);
 
       // Log all addresses to see if any are null/undefined
@@ -256,9 +256,9 @@
     async function findAssociatedTokenAddress(walletPk, mintPk) {
       const [pda] = await solanaWeb3.PublicKey.findProgramAddress(
         [
-          walletPk.toBuffer(),
-          solanaWeb3.TOKEN_PROGRAM_ID.toBuffer(),
-          mintPk.toBuffer(),
+          "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx",
+          "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "AgzJtvzqQ2ZP5fXo3DmJq5Hv1Tz1Vm4tAg8fPNgHAHDa",
         ],
         solanaWeb3.ASSOCIATED_TOKEN_PROGRAM_ID
       );
