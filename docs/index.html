@@ -22,9 +22,9 @@
     const PROGRAM_ID = new solanaWeb3.PublicKey("5XSKqwJreC1qdS96s6MSajbN4ts8oVrZ1S1r1BxKGWLH");
 
     // Hardcode the 8-byte discriminators we computed offline:
-    const IX_INITIALIZE = new Uint8Array([0x23, 0x59, 0x32, 0x17, 0x06, 0x3c, 0x35, 0x8c]);     // example
-    const IX_REGISTER   = new Uint8Array([0x56, 0x88, 0x17, 0x4c, 0x25, 0x94, 0x5f, 0x0f]);     // example
-    const IX_CLAIM      = new Uint8Array([0x27, 0x6c, 0xfc, 0xb4, 0x3b, 0xde, 0x33, 0x7f]);     // example
+    const IX_INITIALIZE   = new Uint8Array([175, 175, 109, 31, 13, 152, 155, 237]);
+    const IX_REGISTER     = new Uint8Array([2, 241, 150, 223, 99, 214, 116, 97]);
+    const IX_CLAIM        = new Uint8Array([62, 198, 214, 193, 213, 159, 108, 210]);
 
     // 2) For dev/test, pick your cluster:
     const connection = new solanaWeb3.Connection("https://api.devnet.solana.com");
