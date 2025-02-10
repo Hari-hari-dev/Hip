@@ -8,7 +8,7 @@ use solana_gateway::Gateway; // For verifying the gateway token
 use std::str::FromStr;
 
 // Your program ID
-declare_id!("2UNUba4NggvTpcT2XJPVXCyAFHFm89hMLKGof7qwuBnH");
+declare_id!("HcHjwxcjSmxjs9dEcW9VmnbxcNTN9esajfsMGf9VdPme");
 
 // Seeds & Constants
 pub const SETTINGS_SEED: &[u8] = b"settings";
@@ -16,7 +16,7 @@ pub const USER_SEED: &[u8] = b"user";
 pub const MINT_AUTH_SEED: &[u8] = b"mint_authority";
 
 // The SPL mint you want to use forever
-pub const HARDCODED_MINT_STR: &str = "AgzJtvzqQ2ZP5fXo3DmJq5Hv1Tz1Vm4tAg8fPNgHAHDa";
+pub const HARDCODED_MINT_STR: &str = "G5GTbUoq8YdCNYdwVS9Mt348jPAdUFwqMb99AUWJjp1o";
 const HARDCODED_DAILY_AMOUNT: u64 = 1440;
 pub const COOLDOWN_SECONDS: i64 = 300; // 5 minutes
 
@@ -192,6 +192,7 @@ pub struct Initialize<'info> {
 
 #[derive(Accounts)]
 pub struct RegisterUser<'info> {
+    // Keep your existing references
     #[account(
         seeds = [SETTINGS_SEED],
         bump
@@ -210,11 +211,36 @@ pub struct RegisterUser<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
+    // Now bring in the mint that you want to make an ATA for.
+    // We can enforce that it matches the settings.mint if you want:
+    #[account(
+        mut,
+        constraint = mint.key() == settings.mint
+    )]
+    pub mint: Account<'info, Mint>,
+
+    // The ATA for `user` + `mint`.
+    // This ensures an associated token account is created if it doesn’t already exist.
+    #[account(
+        init_if_needed,
+        payer = user,
+        associated_token::mint = mint,
+        associated_token::authority = user
+    )]
+    pub user_ata: Account<'info, TokenAccount>,
+
     #[account(address = system_program::ID)]
     pub system_program: Program<'info, System>,
 
+    // The associated token program is needed to create the ATA.
+    pub associated_token_program: Program<'info, AssociatedToken>,
+
+    // The token program is needed if we do any further token instructions
+    pub token_program: Program<'info, Token>,
+
     pub rent: Sysvar<'info, Rent>,
 }
+
 
 #[derive(Accounts)]
 pub struct Claim<'info> {

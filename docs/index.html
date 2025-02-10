@@ -19,7 +19,7 @@
   <script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.js"></script>
   <script>
     // 1) Program info
-    const PROGRAM_ID = new solanaWeb3.PublicKey("2UNUba4NggvTpcT2XJPVXCyAFHFm89hMLKGof7qwuBnH");
+    const PROGRAM_ID = new solanaWeb3.PublicKey("HcHjwxcjSmxjs9dEcW9VmnbxcNTN9esajfsMGf9VdPme");
 
     // Hardcode the 8-byte discriminators we computed offline:
     const IX_INITIALIZE   = new Uint8Array([175, 175, 109, 31, 13, 152, 155, 237]);
@@ -145,54 +145,25 @@
           [new TextEncoder().encode("settings")],
           PROGRAM_ID
         );
-      log("CLAIM: walletPublicKey=" + (walletPublicKey.toBuffer()));
-
       const [userPda, userBump] =
         await solanaWeb3.PublicKey.findProgramAddress(
           [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
           PROGRAM_ID
         );
-      const [mintAuthPda, mintAuthBump] =
-        await solanaWeb3.PublicKey.findProgramAddress(
-          [new TextEncoder().encode("settings"), new TextEncoder().encode("mint_authority")],
-          PROGRAM_ID
-        );
-
-      // Hardcode the mint (matching HARDCODED_MINT_STR in the contract)
-      const mintPubkey = new solanaWeb3.PublicKey("AgzJtvzqQ2ZP5fXo3DmJq5Hv1Tz1Vm4tAg8fPNgHAHDa");
-
-      const associatedTokenAccount = await findAssociatedTokenAddress(
-        walletPublicKey,
-        mintPubkey
-      );
-
-      // The civic gateway token address
-      const gatewayTokenStr = "uniqobk8oGh4XBLMqM68K8M2zNu3CdYX7q5go7whQiv"; 
-      const gatewayTokenAddress = new solanaWeb3.PublicKey(gatewayTokenStr);
-
-      // Log all addresses to see if any are null/undefined
-      log("CLAIM: settingsPda=" + (settingsPda?.toBase58?.() || settingsPda));
-      log("CLAIM: userPda=" + (userPda?.toBase58?.() || userPda));
-      log("CLAIM: mintAuthPda=" + (mintAuthPda?.toBase58?.() || mintAuthPda));
-      log("CLAIM: mintPubkey=" + (mintPubkey?.toBase58?.() || mintPubkey));
-      log("CLAIM: associatedTokenAccount=" + (associatedTokenAccount?.toBase58?.() || associatedTokenAccount));
-      log("CLAIM: gatewayTokenAddress=" + (gatewayTokenAddress?.toBase58?.() || gatewayTokenAddress));
 
       const keys = [
-        { pubkey: settingsPda,       isSigner: false, isWritable: false },
-        { pubkey: userPda,           isSigner: false, isWritable: true },
-        { pubkey: walletPublicKey,   isSigner: true,  isWritable: true },
-        { pubkey: mintPubkey,        isSigner: false, isWritable: true },
-        { pubkey: mintAuthPda,       isSigner: false, isWritable: false },
-        { pubkey: associatedTokenAccount, isSigner: false, isWritable: true },
-        { pubkey: gatewayTokenAddress, isSigner: false, isWritable: false },
+        { pubkey: settingsPda,    isSigner: false, isWritable: false },
+        { pubkey: userPda,        isSigner: false, isWritable: true },
+        { pubkey: walletPublicKey, isSigner: true,  isWritable: true },
         { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
-        { pubkey: solanaWeb3.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: solanaWeb3.ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
         { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       ];
 
-      const data = IX_CLAIM;
+      log("RegisterUser: settingsPda=" + settingsPda.toBase58() + " bump=" + settingsBump);
+      log("RegisterUser: userPda=" + userPda.toBase58() + " bump=" + userBump);
+
+      const data = IX_REGISTER;
+
       const ix = new solanaWeb3.TransactionInstruction({
         programId: PROGRAM_ID,
         keys,
@@ -206,7 +177,7 @@
       const signedTx = await window.solana.signTransaction(tx);
       const txSig = await connection.sendRawTransaction(signedTx.serialize());
       await connection.confirmTransaction(txSig);
-      log("Claim Tx Sig: " + txSig);
+      log("RegisterUser Tx Sig: " + txSig);
     }
 
     async function sendClaimIx() {
@@ -219,7 +190,7 @@
 
       const [userPda, userBump] =
         await solanaWeb3.PublicKey.findProgramAddress(
-          [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
+          [new TextEncoder().encode("user"), walletPublicKey.toBuffer?.()],
           PROGRAM_ID
         );
       const [mintAuthPda, mintAuthBump] =
@@ -229,12 +200,12 @@
         );
 
       // Hardcode the mint (matching HARDCODED_MINT_STR in the contract)
-      const mintPubkey = new solanaWeb3.PublicKey("AgzJtvzqQ2ZP5fXo3DmJq5Hv1Tz1Vm4tAg8fPNgHAHDa");
+      const mintPubkey = new solanaWeb3.PublicKey("G5GTbUoq8YdCNYdwVS9Mt348jPAdUFwqMb99AUWJjp1o");
 
-      const associatedTokenAccount = await findAssociatedTokenAddress(
-        walletPublicKey,
-        mintPubkey
-      );
+    //   const associatedTokenAccount = await findAssociatedTokenAddress(
+    //     walletPublicKey,
+    //     mintPubkey
+    //   );
 
       // The civic gateway token address
       const gatewayTokenStr = "uniqobk8oGh4XBLMqM68K8M2zNu3CdYX7q5go7whQiv"; 
