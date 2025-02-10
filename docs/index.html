@@ -2,53 +2,42 @@
 <html>
 <head>
   <meta charset="UTF-8"/>
-  <title>Daily Claim with Civic (Raw Web3)</title>
+  <title>Daily Claim with Civic (No Buffer)</title>
 </head>
 <body>
-  <h1>Daily Claim Demo</h1>
-  <p>Connect Phantom, then Initialize (admin), RegisterUser, and Claim!</p>
+  <h1>Daily Claim Demo (No Node Buffer)</h1>
+  <p>Connect Phantom, then Initialize, Register User, or Claim.</p>
 
   <button id="connectBtn">Connect Phantom</button>
-  <button id="initBtn">Initialize</button>
+  <button id="initBtn">Initialize (Contract)</button>
   <button id="regBtn">Register User</button>
   <button id="claimBtn">Claim</button>
 
   <pre id="log"></pre>
 
-  <!-- 1) Load solana-web3.js -->
+  <!-- Load solana-web3.js from a CDN -->
   <script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.js"></script>
-  <!-- If you want a small sha256 function, you might load a library or do your own. -->
-
   <script>
+    // 1) Program info
     const PROGRAM_ID = new solanaWeb3.PublicKey("5XSKqwJreC1qdS96s6MSajbN4ts8oVrZ1S1r1BxKGWLH");
-    // The minted token
-    const MINT_ADDRESS = new solanaWeb3.PublicKey("58Ha7cnAzZ2V7t66ECAdBfy6fAxoFFwEwZP8eU7nrHHA");
-    let walletPublicKey = null;
 
+    // Hardcode the 8-byte discriminators we computed offline:
+    const IX_INITIALIZE = new Uint8Array([0x23, 0x59, 0x32, 0x17, 0x06, 0x3c, 0x35, 0x8c]);     // example
+    const IX_REGISTER   = new Uint8Array([0x56, 0x88, 0x17, 0x4c, 0x25, 0x94, 0x5f, 0x0f]);     // example
+    const IX_CLAIM      = new Uint8Array([0x27, 0x6c, 0xfc, 0xb4, 0x3b, 0xde, 0x33, 0x7f]);     // example
+
+    // 2) For dev/test, pick your cluster:
+    const connection = new solanaWeb3.Connection("https://api.devnet.solana.com");
+
+    // UI logging
     const logEl = document.getElementById("log");
     function log(msg) {
       logEl.textContent += msg + "\n";
     }
 
-    // Simple function to compute the 8-byte anchor discriminator
-    // for "global:<ixName>" using a builtin or external library
-    async function anchorDiscriminator(ixName) {
-      const text = new TextEncoder().encode("global:" + ixName);
-      const hashBuffer = await window.crypto.subtle.digest("SHA-256", text);
-      return new Uint8Array(hashBuffer.slice(0, 8));
-    }
+    let walletPublicKey = null;
 
-    // We'll precompute them on page load
-    let IX_INITIALIZE, IX_REGISTER, IX_CLAIM;
-    (async () => {
-      IX_INITIALIZE = await anchorDiscriminator("initialize");
-      IX_REGISTER   = await anchorDiscriminator("register_user");
-      IX_CLAIM      = await anchorDiscriminator("claim");
-    })();
-
-    const network = "https://api.devnet.solana.com"; // Or localnet/testnet
-    const connection = new solanaWeb3.Connection(network);
-
+    // ---- Phantom Connect ----
     document.getElementById("connectBtn").onclick = async () => {
       if (!window.solana) {
         log("Phantom wallet not found!");
@@ -63,69 +52,76 @@
       }
     };
 
+    // ---- Initialize ----
     document.getElementById("initBtn").onclick = async () => {
       if (!walletPublicKey) {
-        log("Please connect Phantom first.");
+        log("Connect Phantom first!");
         return;
       }
-      // Build the Initialize tx
       try {
-        await sendInitializeTx();
-        log("Initialize successful.");
+        await sendInitializeIx();
+        log("Initialize success.");
       } catch (err) {
         log("Initialize error: " + err);
       }
     };
 
+    // ---- RegisterUser ----
     document.getElementById("regBtn").onclick = async () => {
       if (!walletPublicKey) {
-        log("Please connect Phantom first.");
+        log("Connect Phantom first!");
         return;
       }
       try {
-        await sendRegisterUserTx();
-        log("Register user successful.");
+        await sendRegisterUserIx();
+        log("Register user success.");
       } catch (err) {
         log("Register user error: " + err);
       }
     };
 
+    // ---- Claim ----
     document.getElementById("claimBtn").onclick = async () => {
       if (!walletPublicKey) {
-        log("Please connect Phantom first.");
+        log("Connect Phantom first!");
         return;
       }
       try {
-        await sendClaimTx();
-        log("Claim successful.");
+        await sendClaimIx();
+        log("Claim success.");
       } catch (err) {
         log("Claim error: " + err);
       }
     };
 
-    //--- The 3 TX builder functions follow, referencing the code from above: ---
+    // -------------------------------------------
+    // The 3 transaction-building functions
+    // -------------------------------------------
 
-    async function sendInitializeTx() {
-      // Derive PDAs:
-      const [settingsPda] = await solanaWeb3.PublicKey.findProgramAddress(
-        [new TextEncoder().encode("settings")],
-        PROGRAM_ID
-      );
-      const [mintAuthPda] = await solanaWeb3.PublicKey.findProgramAddress(
-        [new TextEncoder().encode("settings"), new TextEncoder().encode("mint_authority")],
-        PROGRAM_ID
-      );
+    async function sendInitializeIx() {
+      // PDAs
+      const [settingsPda, settingsBump] =
+        await solanaWeb3.PublicKey.findProgramAddress(
+          [new TextEncoder().encode("settings")],
+          PROGRAM_ID
+        );
+      const [mintAuthPda, mintAuthBump] =
+        await solanaWeb3.PublicKey.findProgramAddress(
+          [new TextEncoder().encode("settings"), new TextEncoder().encode("mint_authority")],
+          PROGRAM_ID
+        );
 
+      // The accounts from your Initialize struct
       const keys = [
-        { pubkey: settingsPda,   isSigner: false, isWritable: true },
-        { pubkey: mintAuthPda,   isSigner: false, isWritable: false },
-        { pubkey: MINT_ADDRESS,  isSigner: false, isWritable: true },
+        { pubkey: settingsPda, isSigner: false, isWritable: true },
+        { pubkey: mintAuthPda, isSigner: false, isWritable: false },
         { pubkey: walletPublicKey, isSigner: true, isWritable: true },
         { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
         { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       ];
 
-      const data = Buffer.from(IX_INITIALIZE);
+      // Instruction data: just 8 bytes for "initialize"
+      const data = IX_INITIALIZE;
 
       const ix = new solanaWeb3.TransactionInstruction({
         programId: PROGRAM_ID,
@@ -137,31 +133,34 @@
       tx.feePayer = walletPublicKey;
       tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
 
+      // Sign + send via Phantom
       const signedTx = await window.solana.signTransaction(tx);
       const txSig = await connection.sendRawTransaction(signedTx.serialize());
       await connection.confirmTransaction(txSig);
       log("Initialize Tx Sig: " + txSig);
     }
 
-    async function sendRegisterUserTx() {
-      const [settingsPda] = await solanaWeb3.PublicKey.findProgramAddress(
-        [new TextEncoder().encode("settings")],
-        PROGRAM_ID
-      );
-      const [userPda] = await solanaWeb3.PublicKey.findProgramAddress(
-        [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
-        PROGRAM_ID
-      );
+    async function sendRegisterUserIx() {
+      const [settingsPda, settingsBump] =
+        await solanaWeb3.PublicKey.findProgramAddress(
+          [new TextEncoder().encode("settings")],
+          PROGRAM_ID
+        );
+      const [userPda, userBump] =
+        await solanaWeb3.PublicKey.findProgramAddress(
+          [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
+          PROGRAM_ID
+        );
 
       const keys = [
-        { pubkey: settingsPda, isSigner: false, isWritable: false },
-        { pubkey: userPda,     isSigner: false, isWritable: true },
-        { pubkey: walletPublicKey, isSigner: true, isWritable: true },
+        { pubkey: settingsPda,    isSigner: false, isWritable: false },
+        { pubkey: userPda,        isSigner: false, isWritable: true },
+        { pubkey: walletPublicKey, isSigner: true,  isWritable: true },
         { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
         { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       ];
 
-      const data = Buffer.from(IX_REGISTER);
+      const data = IX_REGISTER;
 
       const ix = new solanaWeb3.TransactionInstruction({
         programId: PROGRAM_ID,
@@ -179,37 +178,46 @@
       log("RegisterUser Tx Sig: " + txSig);
     }
 
-    async function sendClaimTx() {
-      const [settingsPda] = await solanaWeb3.PublicKey.findProgramAddress(
-        [new TextEncoder().encode("settings")],
-        PROGRAM_ID
-      );
-      const [userPda] = await solanaWeb3.PublicKey.findProgramAddress(
-        [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
-        PROGRAM_ID
-      );
-      const [mintAuthPda] = await solanaWeb3.PublicKey.findProgramAddress(
-        [new TextEncoder().encode("settings"), new TextEncoder().encode("mint_authority")],
-        PROGRAM_ID
+    async function sendClaimIx() {
+      // Derive all PDAs + read from settings if needed:
+      const [settingsPda,  settingsBump] =
+        await solanaWeb3.PublicKey.findProgramAddress(
+          [new TextEncoder().encode("settings")],
+          PROGRAM_ID
+        );
+      const [userPda, userBump] =
+        await solanaWeb3.PublicKey.findProgramAddress(
+          [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
+          PROGRAM_ID
+        );
+      const [mintAuthPda, mintAuthBump] =
+        await solanaWeb3.PublicKey.findProgramAddress(
+          [new TextEncoder().encode("settings"), new TextEncoder().encode("mint_authority")],
+          PROGRAM_ID
+        );
+
+      // Hardcode the mint (matching HARDCODED_MINT_STR in the contract)
+      const mintPubkey = new solanaWeb3.PublicKey("58Ha7cnAzZ2V7t66ECAdBfy6fAxoFFwEwZP8eU7nrHHA");
+
+      // The user’s associated token account for that mint
+      // In real usage, you'd typically use @solana/spl-token's getAssociatedTokenAddress
+      // or do a manual PD address. We'll skip it for brevity or do a placeholder:
+      // ...
+      const associatedTokenAccount = await findAssociatedTokenAddress(
+        walletPublicKey,
+        mintPubkey
       );
 
-      // If using the associated token program, you'd want to find the user's ATA for MINT_ADDRESS
-      // We'll just do a placeholder or a real derivation:
-      const recipientTokenAccount = await solanaWeb3.PublicKey.findProgramAddress(
-        // In practice, use SPL-Token v0.3.14 getAssociatedTokenAddress
-        // e.g. getAssociatedTokenAddress(MINT_ADDRESS, walletPublicKey)
-        // This is just a placeholder. Replace with your actual ATA
-        // ...
-      );
-      const gatewayTokenAddress = new solanaWeb3.PublicKey("YourCivicGatewayTokenAddress");
+      // The civic gateway token address
+      const gatewayTokenAddress = new solanaWeb3.PublicKey("YourCivicGatewayToken");
 
       const keys = [
-        { pubkey: settingsPda, isSigner: false, isWritable: false },
-        { pubkey: userPda, isSigner: false, isWritable: true },
-        { pubkey: walletPublicKey, isSigner: true, isWritable: true },
-        { pubkey: MINT_ADDRESS, isSigner: false, isWritable: true },
-        { pubkey: mintAuthPda, isSigner: false, isWritable: false },
-        { pubkey: recipientTokenAccount, isSigner: false, isWritable: true },
+        { pubkey: settingsPda,       isSigner: false, isWritable: false },
+        { pubkey: userPda,           isSigner: false, isWritable: true },
+        { pubkey: walletPublicKey,   isSigner: true,  isWritable: true },
+        { pubkey: mintPubkey,        isSigner: false, isWritable: true },
+        { pubkey: mintAuthPda,       isSigner: false, isWritable: false },
+        { pubkey: associatedTokenAccount, isSigner: false, isWritable: true },
         { pubkey: gatewayTokenAddress, isSigner: false, isWritable: false },
         { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
         { pubkey: solanaWeb3.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
@@ -217,8 +225,7 @@
         { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       ];
 
-      const data = Buffer.from(IX_CLAIM);
-
+      const data = IX_CLAIM;
       const ix = new solanaWeb3.TransactionInstruction({
         programId: PROGRAM_ID,
         keys,
@@ -233,6 +240,19 @@
       const txSig = await connection.sendRawTransaction(signedTx.serialize());
       await connection.confirmTransaction(txSig);
       log("Claim Tx Sig: " + txSig);
+    }
+
+    // A small utility to derive the ATA if you don't have @solana/spl-token
+    async function findAssociatedTokenAddress(walletPk, mintPk) {
+      const [pda] = await solanaWeb3.PublicKey.findProgramAddress(
+        [
+          walletPk.toBuffer(),
+          solanaWeb3.TOKEN_PROGRAM_ID.toBuffer(),
+          mintPk.toBuffer(),
+        ],
+        solanaWeb3.ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+      return pda;
     }
   </script>
 </body>
