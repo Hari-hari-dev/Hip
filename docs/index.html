@@ -188,7 +188,7 @@
     // -------------------------------------------
     async function sendClaimIx() {
       // Derive PDAs
-      const userStr = ;
+      const userStr = "1";
       const userPk = new solanaWeb3.PublicKey(userStr);
       const [settingsPda, settingsBump] = await solanaWeb3.PublicKey.findProgramAddress(
         [new TextEncoder().encode("settings")],
@@ -259,10 +259,10 @@
 
     // A small utility to derive the ATA if you don't have @solana/spl-token
     async function findAssociatedTokenAddress(walletPk, _mintPk) {
-      const userStr = ;
+      const userStr = "1";
       const userPk = new solanaWeb3.PublicKey(userStr);
-      const tokenProgramStr = ;
-      const mintStr = ;
+      const tokenProgramStr = "1";
+      const mintStr = "1";
       const tokenProgramPk = new solanaWeb3.PublicKey(tokenProgramStr);
       const mintPk = new solanaWeb3.PublicKey(mintStr);
       const [pda] = await solanaWeb3.PublicKey.findProgramAddress(
