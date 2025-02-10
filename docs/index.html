@@ -20,7 +20,8 @@
   <script>
     // 1) Program info
     const PROGRAM_ID = new solanaWeb3.PublicKey("2UNUba4NggvTpcT2XJPVXCyAFHFm89hMLKGof7qwuBnH");
-
+    const userStr = "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx";
+    const userPk = new solanaWeb3.PublicKey(userStr);
     // Hardcode the 8-byte discriminators we computed offline:
     const IX_INITIALIZE   = new Uint8Array([175, 175, 109, 31, 13, 152, 155, 237]);
     const IX_REGISTER     = new Uint8Array([2, 241, 150, 223, 99, 214, 116, 97]);
@@ -191,7 +192,7 @@
         PROGRAM_ID
       );
       const [userPda, userBump] = await solanaWeb3.PublicKey.findProgramAddress(
-        [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
+        [new TextEncoder().encode("user"), userPk.toBuffer()],
         PROGRAM_ID
       );
       const [mintAuthPda, mintAuthBump] = await solanaWeb3.PublicKey.findProgramAddress(
@@ -251,10 +252,9 @@
       await connection.confirmTransaction(txSig);
       log("Claim Tx Sig: " + txSig);
     }
-    const userStr = "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx";
+
     const tokenProgramStr = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
     const mintStr = "AgzJtvzqQ2ZP5fXo3DmJq5Hv1Tz1Vm4tAg8fPNgHAHDa";
-    const userPk = new solanaWeb3.PublicKey(userStr);
     const tokenProgramPk = new solanaWeb3.PublicKey(tokenProgramStr);
     const mintPk = new solanaWeb3.PublicKey(mintStr);
 
