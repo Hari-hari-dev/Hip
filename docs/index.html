@@ -1,169 +1,239 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Claim with Cooldown</title>
-    <script src="https://cdn.jsdelivr.net/npm/@project-serum/anchor@0.30.1/dist/anchor.min.js"></script>
-    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
+  <meta charset="UTF-8"/>
+  <title>Daily Claim with Civic (Raw Web3)</title>
 </head>
 <body>
-    <h1>Daily Claim with Cooldown</h1>
-    <button id="connectWallet">Connect Wallet</button>
-    <button id="initialize">Initialize Program</button>
-    <button id="registerUser">Register User</button>
-    <button id="claimTokens">Claim Tokens</button>
+  <h1>Daily Claim Demo</h1>
+  <p>Connect Phantom, then Initialize (admin), RegisterUser, and Claim!</p>
 
-    <script>
-        // Replace with your program ID
-        const PROGRAM_ID = new anchor.web3.PublicKey("yQfuHCNR7EBZfpacpniXtFVRc4QZ4Qj4XRCfN4xosLH");
+  <button id="connectBtn">Connect Phantom</button>
+  <button id="initBtn">Initialize</button>
+  <button id="regBtn">Register User</button>
+  <button id="claimBtn">Claim</button>
 
-        // Anchor provider and program setup
-        let provider;
-        let program;
-        let wallet;
+  <pre id="log"></pre>
 
-        // Connect to Phantom wallet
-        document.getElementById('connectWallet').addEventListener('click', async () => {
-            if (window.solana) {
-                wallet = window.solana;
-                await wallet.connect();
-                console.log("Connected to wallet:", wallet.publicKey.toString());
+  <!-- 1) Load solana-web3.js -->
+  <script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.js"></script>
+  <!-- If you want a small sha256 function, you might load a library or do your own. -->
 
-                provider = new anchor.AnchorProvider(
-                    new anchor.web3.Connection("https://api.devnet.solana.com"), // Use devnet for testing
-                    wallet,
-                    { commitment: "confirmed" }
-                );
-                anchor.setProvider(provider);
+  <script>
+    const PROGRAM_ID = new solanaWeb3.PublicKey("5XSKqwJreC1qdS96s6MSajbN4ts8oVrZ1S1r1BxKGWLH");
+    // The minted token
+    const MINT_ADDRESS = new solanaWeb3.PublicKey("58Ha7cnAzZ2V7t66ECAdBfy6fAxoFFwEwZP8eU7nrHHA");
+    let walletPublicKey = null;
 
-                // Load the program
-                const idl = await anchor.Program.fetchIdl(PROGRAM_ID, provider);
-                program = new anchor.Program(idl, PROGRAM_ID, provider);
-                console.log("Program loaded:", program);
-            } else {
-                alert("Phantom wallet not found!");
-            }
-        });
+    const logEl = document.getElementById("log");
+    function log(msg) {
+      logEl.textContent += msg + "\n";
+    }
 
-        // Initialize the program
-        document.getElementById('initialize').addEventListener('click', async () => {
-            if (!program) {
-                alert("Please connect your wallet first.");
-                return;
-            }
+    // Simple function to compute the 8-byte anchor discriminator
+    // for "global:<ixName>" using a builtin or external library
+    async function anchorDiscriminator(ixName) {
+      const text = new TextEncoder().encode("global:" + ixName);
+      const hashBuffer = await window.crypto.subtle.digest("SHA-256", text);
+      return new Uint8Array(hashBuffer.slice(0, 8));
+    }
 
-            const dailyAmount = 1440; // Example daily amount
-            const mint = anchor.web3.Keypair.generate(); // Replace with your mint public key
-            const settingsPda = await anchor.web3.PublicKey.findProgramAddress(
-                [Buffer.from("settings")],
-                program.programId
-            );
-            const mintAuthorityPda = await anchor.web3.PublicKey.findProgramAddress(
-                [Buffer.from("settings"), Buffer.from("mint_authority")],
-                program.programId
-            );
+    // We'll precompute them on page load
+    let IX_INITIALIZE, IX_REGISTER, IX_CLAIM;
+    (async () => {
+      IX_INITIALIZE = await anchorDiscriminator("initialize");
+      IX_REGISTER   = await anchorDiscriminator("register_user");
+      IX_CLAIM      = await anchorDiscriminator("claim");
+    })();
 
-            try {
-                const tx = await program.methods.initialize(dailyAmount)
-                    .accounts({
-                        settings: settingsPda,
-                        mintAuthority: mintAuthorityPda,
-                        mint: mint.publicKey,
-                        authority: wallet.publicKey,
-                        systemProgram: anchor.web3.SystemProgram.programId,
-                        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-                    })
-                    .rpc();
-                console.log("Initialized with tx:", tx);
-                alert("Program initialized successfully!");
-            } catch (error) {
-                console.error("Error initializing program:", error);
-                alert("Failed to initialize program.");
-            }
-        });
+    const network = "https://api.devnet.solana.com"; // Or localnet/testnet
+    const connection = new solanaWeb3.Connection(network);
 
-        // Register a new user
-        document.getElementById('registerUser').addEventListener('click', async () => {
-            if (!program) {
-                alert("Please connect your wallet first.");
-                return;
-            }
+    document.getElementById("connectBtn").onclick = async () => {
+      if (!window.solana) {
+        log("Phantom wallet not found!");
+        return;
+      }
+      try {
+        const resp = await window.solana.connect();
+        walletPublicKey = resp.publicKey;
+        log("Connected Phantom: " + walletPublicKey.toBase58());
+      } catch (err) {
+        log("Error connecting Phantom: " + err);
+      }
+    };
 
-            const settingsPda = await anchor.web3.PublicKey.findProgramAddress(
-                [Buffer.from("settings")],
-                program.programId
-            );
-            const userStatePda = await anchor.web3.PublicKey.findProgramAddress(
-                [Buffer.from("user"), wallet.publicKey.toBuffer()],
-                program.programId
-            );
+    document.getElementById("initBtn").onclick = async () => {
+      if (!walletPublicKey) {
+        log("Please connect Phantom first.");
+        return;
+      }
+      // Build the Initialize tx
+      try {
+        await sendInitializeTx();
+        log("Initialize successful.");
+      } catch (err) {
+        log("Initialize error: " + err);
+      }
+    };
 
-            try {
-                const tx = await program.methods.registerUser()
-                    .accounts({
-                        settings: settingsPda,
-                        userState: userStatePda,
-                        user: wallet.publicKey,
-                        systemProgram: anchor.web3.SystemProgram.programId,
-                        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-                    })
-                    .rpc();
-                console.log("User registered with tx:", tx);
-                alert("User registered successfully!");
-            } catch (error) {
-                console.error("Error registering user:", error);
-                alert("Failed to register user.");
-            }
-        });
+    document.getElementById("regBtn").onclick = async () => {
+      if (!walletPublicKey) {
+        log("Please connect Phantom first.");
+        return;
+      }
+      try {
+        await sendRegisterUserTx();
+        log("Register user successful.");
+      } catch (err) {
+        log("Register user error: " + err);
+      }
+    };
 
-        // Claim tokens
-        document.getElementById('claimTokens').addEventListener('click', async () => {
-            if (!program) {
-                alert("Please connect your wallet first.");
-                return;
-            }
+    document.getElementById("claimBtn").onclick = async () => {
+      if (!walletPublicKey) {
+        log("Please connect Phantom first.");
+        return;
+      }
+      try {
+        await sendClaimTx();
+        log("Claim successful.");
+      } catch (err) {
+        log("Claim error: " + err);
+      }
+    };
 
-            const settingsPda = await anchor.web3.PublicKey.findProgramAddress(
-                [Buffer.from("settings")],
-                program.programId
-            );
-            const userStatePda = await anchor.web3.PublicKey.findProgramAddress(
-                [Buffer.from("user"), wallet.publicKey.toBuffer()],
-                program.programId
-            );
-            const mint = anchor.web3.Keypair.generate(); // Replace with your mint public key
-            const mintAuthorityPda = await anchor.web3.PublicKey.findProgramAddress(
-                [Buffer.from("settings"), Buffer.from("mint_authority")],
-                program.programId
-            );
-            const recipientTokenAccount = await anchor.utils.token.associatedAddress({
-                mint: mint.publicKey,
-                owner: wallet.publicKey,
-            });
+    //--- The 3 TX builder functions follow, referencing the code from above: ---
 
-            try {
-                const tx = await program.methods.claim()
-                    .accounts({
-                        settings: settingsPda,
-                        userState: userStatePda,
-                        user: wallet.publicKey,
-                        mint: mint.publicKey,
-                        mintAuthority: mintAuthorityPda,
-                        recipientTokenAccount: recipientTokenAccount,
-                        systemProgram: anchor.web3.SystemProgram.programId,
-                        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
-                        associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
-                        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-                    })
-                    .rpc();
-                console.log("Tokens claimed with tx:", tx);
-                alert("Tokens claimed successfully!");
-            } catch (error) {
-                console.error("Error claiming tokens:", error);
-                alert("Failed to claim tokens.");
-            }
-        });
-    </script>
+    async function sendInitializeTx() {
+      // Derive PDAs:
+      const [settingsPda] = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode("settings")],
+        PROGRAM_ID
+      );
+      const [mintAuthPda] = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode("settings"), new TextEncoder().encode("mint_authority")],
+        PROGRAM_ID
+      );
+
+      const keys = [
+        { pubkey: settingsPda,   isSigner: false, isWritable: true },
+        { pubkey: mintAuthPda,   isSigner: false, isWritable: false },
+        { pubkey: MINT_ADDRESS,  isSigner: false, isWritable: true },
+        { pubkey: walletPublicKey, isSigner: true, isWritable: true },
+        { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+      ];
+
+      const data = Buffer.from(IX_INITIALIZE);
+
+      const ix = new solanaWeb3.TransactionInstruction({
+        programId: PROGRAM_ID,
+        keys,
+        data,
+      });
+
+      const tx = new solanaWeb3.Transaction().add(ix);
+      tx.feePayer = walletPublicKey;
+      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+      const signedTx = await window.solana.signTransaction(tx);
+      const txSig = await connection.sendRawTransaction(signedTx.serialize());
+      await connection.confirmTransaction(txSig);
+      log("Initialize Tx Sig: " + txSig);
+    }
+
+    async function sendRegisterUserTx() {
+      const [settingsPda] = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode("settings")],
+        PROGRAM_ID
+      );
+      const [userPda] = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
+        PROGRAM_ID
+      );
+
+      const keys = [
+        { pubkey: settingsPda, isSigner: false, isWritable: false },
+        { pubkey: userPda,     isSigner: false, isWritable: true },
+        { pubkey: walletPublicKey, isSigner: true, isWritable: true },
+        { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+      ];
+
+      const data = Buffer.from(IX_REGISTER);
+
+      const ix = new solanaWeb3.TransactionInstruction({
+        programId: PROGRAM_ID,
+        keys,
+        data,
+      });
+
+      const tx = new solanaWeb3.Transaction().add(ix);
+      tx.feePayer = walletPublicKey;
+      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+      const signedTx = await window.solana.signTransaction(tx);
+      const txSig = await connection.sendRawTransaction(signedTx.serialize());
+      await connection.confirmTransaction(txSig);
+      log("RegisterUser Tx Sig: " + txSig);
+    }
+
+    async function sendClaimTx() {
+      const [settingsPda] = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode("settings")],
+        PROGRAM_ID
+      );
+      const [userPda] = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
+        PROGRAM_ID
+      );
+      const [mintAuthPda] = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode("settings"), new TextEncoder().encode("mint_authority")],
+        PROGRAM_ID
+      );
+
+      // If using the associated token program, you'd want to find the user's ATA for MINT_ADDRESS
+      // We'll just do a placeholder or a real derivation:
+      const recipientTokenAccount = await solanaWeb3.PublicKey.findProgramAddress(
+        // In practice, use SPL-Token v0.3.14 getAssociatedTokenAddress
+        // e.g. getAssociatedTokenAddress(MINT_ADDRESS, walletPublicKey)
+        // This is just a placeholder. Replace with your actual ATA
+        // ...
+      );
+      const gatewayTokenAddress = new solanaWeb3.PublicKey("YourCivicGatewayTokenAddress");
+
+      const keys = [
+        { pubkey: settingsPda, isSigner: false, isWritable: false },
+        { pubkey: userPda, isSigner: false, isWritable: true },
+        { pubkey: walletPublicKey, isSigner: true, isWritable: true },
+        { pubkey: MINT_ADDRESS, isSigner: false, isWritable: true },
+        { pubkey: mintAuthPda, isSigner: false, isWritable: false },
+        { pubkey: recipientTokenAccount, isSigner: false, isWritable: true },
+        { pubkey: gatewayTokenAddress, isSigner: false, isWritable: false },
+        { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: solanaWeb3.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: solanaWeb3.ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+      ];
+
+      const data = Buffer.from(IX_CLAIM);
+
+      const ix = new solanaWeb3.TransactionInstruction({
+        programId: PROGRAM_ID,
+        keys,
+        data,
+      });
+
+      const tx = new solanaWeb3.Transaction().add(ix);
+      tx.feePayer = walletPublicKey;
+      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+      const signedTx = await window.solana.signTransaction(tx);
+      const txSig = await connection.sendRawTransaction(signedTx.serialize());
+      await connection.confirmTransaction(txSig);
+      log("Claim Tx Sig: " + txSig);
+    }
+  </script>
 </body>
 </html>

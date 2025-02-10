@@ -7,41 +7,46 @@ use anchor_spl::{
 use solana_gateway::Gateway; // For verifying the gateway token
 use std::str::FromStr;
 
-declare_id!("4DJBep6Jm34REZUnjr1NjEZiwqzm2pS1cjpiejvG2iUF");
+// Your program ID
+declare_id!("5XSKqwJreC1qdS96s6MSajbN4ts8oVrZ1S1r1BxKGWLH");
 
-// Seeds
+// Seeds & Constants
 pub const SETTINGS_SEED: &[u8] = b"settings";
 pub const USER_SEED: &[u8] = b"user";
 pub const MINT_AUTH_SEED: &[u8] = b"mint_authority";
-const HARDCODED_DAILY_AMOUNT: u64 = 1440;
 
-// 5-minute (300-second) cooldown
-pub const COOLDOWN_SECONDS: i64 = 300;
+// The SPL mint you want to use forever
+pub const HARDCODED_MINT_STR: &str = "58Ha7cnAzZ2V7t66ECAdBfy6fAxoFFwEwZP8eU7nrHHA";
+const HARDCODED_DAILY_AMOUNT: u64 = 1440;
+pub const COOLDOWN_SECONDS: i64 = 300; // 5 minutes
 
 #[program]
 pub mod daily_claim_with_civic_gateway {
     use super::*;
 
     /// (1) Initialize global settings:
-    ///     - `daily_amount`: tokens minted per day
-    ///     - `gatekeeper_network`: used for verifying face-scan or gateway pass
-    pub fn initialize(
-        ctx: Context<Initialize>,
-        //daily_amount: u64,
-        //gatekeeper_network: Pubkey,
-    ) -> Result<()> {
+    /// We skip passing in a mint or GKN from the client.
+    /// Instead, we hardcode them in the code (below).
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        // Hardcode the gatekeeper network
+        let hardcoded_gkn = Pubkey::from_str("uniqobk8oGh4XBLMqM68K8M2zNu3CdYX7q5go7whQiv")
+            .expect("Invalid GKN Pubkey literal");
 
-        let hardcoded_gkn = Pubkey::from_str("uniqobk8oGh4XBLMqM68K8M2zNu3CdYX7q5go7whQiv").unwrap();
+        // Hardcode your SPL token mint
+        let hardcoded_mint =
+            Pubkey::from_str(HARDCODED_MINT_STR).expect("Invalid Hardcoded Mint Pubkey literal");
 
         let settings = &mut ctx.accounts.settings;
         settings.authority = ctx.accounts.authority.key();
         settings.gatekeeper_network = hardcoded_gkn;
-        settings.mint = ctx.accounts.mint.key();
+        settings.mint = hardcoded_mint;
         settings.daily_amount = HARDCODED_DAILY_AMOUNT;
+
+        msg!("Initialized with mint: {}", settings.mint);
         Ok(())
     }
 
-    /// (2) Register a new user by creating a small PDA for them
+    /// (2) Register a new user by creating a small PDA for them.
     pub fn register_user(ctx: Context<RegisterUser>) -> Result<()> {
         let user_state = &mut ctx.accounts.user_state;
         user_state.user = ctx.accounts.user.key();
@@ -82,8 +87,7 @@ pub mod daily_claim_with_civic_gateway {
             return err!(ErrorCode::TooSoon);
         }
 
-        // 3) Calculate daily emission for the time elapsed
-        //    Optionally cap at 7 days of accumulation
+        // 3) Calculate daily emission for the time elapsed (cap at 7 days)
         let capped_delta = delta.min(7 * 86400);
         let tokens_per_second = settings.daily_amount as f64 / 86400.0;
         let minted_float = tokens_per_second * (capped_delta as f64);
@@ -98,9 +102,9 @@ pub mod daily_claim_with_civic_gateway {
             let mint_auth_bump = ctx.bumps.mint_authority;
 
             let signer_seeds = &[
-                SETTINGS_SEED,
+                super::SETTINGS_SEED,
                 &[settings_bump],
-                MINT_AUTH_SEED,
+                super::MINT_AUTH_SEED,
                 &[mint_auth_bump],
             ];
             let signer = &[&signer_seeds[..]];
@@ -118,11 +122,7 @@ pub mod daily_claim_with_civic_gateway {
                 minted_amount,
             )?;
 
-            msg!(
-                "Minted {} tokens for user {}",
-                minted_amount,
-                user_state.user
-            );
+            msg!("Minted {} tokens for user {}", minted_amount, user_state.user);
         } else {
             msg!("No tokens minted (insufficient time elapsed).");
         }
@@ -131,9 +131,9 @@ pub mod daily_claim_with_civic_gateway {
     }
 }
 
-// -------------------------------------------------------------------
+// -----------------------------------------------------------
 // Accounts + PDAs
-// -------------------------------------------------------------------
+// -----------------------------------------------------------
 
 #[account]
 pub struct Settings {
@@ -143,7 +143,7 @@ pub struct Settings {
     pub daily_amount: u64,          // Tokens minted per day
 }
 impl Settings {
-    // 8 (discriminator) + 32 + 32 + 32 + 8 = 112 total
+    // 8 + 32 + 32 + 32 + 8 = 112
     pub const SIZE: usize = 8 + 32 + 32 + 32 + 8;
 }
 
@@ -153,13 +153,13 @@ pub struct UserState {
     pub last_claim_timestamp: i64,
 }
 impl UserState {
-    // 8 (discriminator) + 32 + 8 = 48
+    // 8 + 32 + 8 = 48
     pub const SIZE: usize = 8 + 32 + 8;
 }
 
-// -------------------------------------------------------------------
+// -----------------------------------------------------------
 // Instruction Contexts
-// -------------------------------------------------------------------
+// -----------------------------------------------------------
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -178,12 +178,8 @@ pub struct Initialize<'info> {
         seeds = [SETTINGS_SEED, MINT_AUTH_SEED],
         bump
     )]
-    /// CHECK: program-derived signer, no data stored
+    /// CHECK: Just a PDA signer, no data.
     pub mint_authority: UncheckedAccount<'info>,
-
-    /// The token mint
-    #[account(mut)]
-    pub mint: Account<'info, Mint>,
 
     /// Payer + admin
     #[account(mut)]
@@ -216,6 +212,7 @@ pub struct RegisterUser<'info> {
 
     #[account(address = system_program::ID)]
     pub system_program: Program<'info, System>,
+
     pub rent: Sysvar<'info, Rent>,
 }
 
@@ -237,7 +234,11 @@ pub struct Claim<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
-    #[account(mut)]
+    /// We'll ensure that the `mint.key() == settings.mint` at runtime
+    #[account(
+        mut,
+        constraint = mint.key() == settings.mint
+    )]
     pub mint: Account<'info, Mint>,
 
     #[account(
@@ -247,7 +248,7 @@ pub struct Claim<'info> {
     /// CHECK: program-derived signer
     pub mint_authority: UncheckedAccount<'info>,
 
-    /// The user’s associated token account for receiving minted tokens
+    /// The user’s associated token account
     #[account(
         init_if_needed,
         payer = user,
@@ -256,14 +257,9 @@ pub struct Claim<'info> {
     )]
     pub recipient_token_account: Account<'info, TokenAccount>,
 
-    // -------------------------
-    // Civic Gateway integration
-    // We do an "unchecked account" for the gateway token itself,
-    // then check it at runtime with `Gateway::verify_gateway_token_account_info(...)`.
-    /// CHECK: Verified by the solana-gateway program
+    /// CHECK: Verified at runtime with `Gateway::verify_gateway_token_account_info`
     pub gateway_token: UncheckedAccount<'info>,
 
-    // The rest
     #[account(address = system_program::ID)]
     pub system_program: Program<'info, System>,
 
@@ -272,9 +268,9 @@ pub struct Claim<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-// -------------------------------------------------------------------
+// -----------------------------------------------------------
 // Errors
-// -------------------------------------------------------------------
+// -----------------------------------------------------------
 #[error_code]
 pub enum ErrorCode {
     #[msg("You must wait 5 minutes between claims.")]

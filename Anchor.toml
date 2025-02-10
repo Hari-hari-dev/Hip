@@ -5,8 +5,8 @@
 resolution = true
 skip-lint = false
 
-[programs.localnet]
-hip = "4DJBep6Jm34REZUnjr1NjEZiwqzm2pS1cjpiejvG2iUF"
+[programs.devnet]
+hip = "5XSKqwJreC1qdS96s6MSajbN4ts8oVrZ1S1r1BxKGWLH"
 
 [registry]
 url = "https://api.apr.dev"
