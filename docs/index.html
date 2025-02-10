@@ -2,10 +2,10 @@
 <html>
 <head>
   <meta charset="UTF-8"/>
-  <title>Daily Claim with Civic (No Buffer)</title>
+  <title>Daily Claim with Civic (No Buffer) - Extended Logging</title>
 </head>
 <body>
-  <h1>Daily Claim Demo (No Node Buffer)</h1>
+  <h1>Daily Claim Demo (with Extensive Logging)</h1>
   <p>Connect Phantom, then Initialize, Register User, or Claim.</p>
 
   <button id="connectBtn">Connect Phantom</button>
@@ -26,13 +26,13 @@
     const IX_REGISTER     = new Uint8Array([2, 241, 150, 223, 99, 214, 116, 97]);
     const IX_CLAIM        = new Uint8Array([62, 198, 214, 193, 213, 159, 108, 210]);
 
-    // 2) For dev/test, pick your cluster:
     const connection = new solanaWeb3.Connection("https://api.devnet.solana.com");
 
-    // UI logging
+    // Logging helpers
     const logEl = document.getElementById("log");
     function log(msg) {
       logEl.textContent += msg + "\n";
+      console.log(msg);
     }
 
     let walletPublicKey = null;
@@ -99,7 +99,6 @@
     // -------------------------------------------
 
     async function sendInitializeIx() {
-      // PDAs
       const [settingsPda, settingsBump] =
         await solanaWeb3.PublicKey.findProgramAddress(
           [new TextEncoder().encode("settings")],
@@ -111,7 +110,6 @@
           PROGRAM_ID
         );
 
-      // The accounts from your Initialize struct
       const keys = [
         { pubkey: settingsPda, isSigner: false, isWritable: true },
         { pubkey: mintAuthPda, isSigner: false, isWritable: false },
@@ -120,7 +118,9 @@
         { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       ];
 
-      // Instruction data: just 8 bytes for "initialize"
+      log("Initialize: settingsPda=" + settingsPda.toBase58() + " bump=" + settingsBump);
+      log("Initialize: mintAuthPda=" + mintAuthPda.toBase58() + " bump=" + mintAuthBump);
+
       const data = IX_INITIALIZE;
 
       const ix = new solanaWeb3.TransactionInstruction({
@@ -133,7 +133,6 @@
       tx.feePayer = walletPublicKey;
       tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
 
-      // Sign + send via Phantom
       const signedTx = await window.solana.signTransaction(tx);
       const txSig = await connection.sendRawTransaction(signedTx.serialize());
       await connection.confirmTransaction(txSig);
@@ -160,6 +159,9 @@
         { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       ];
 
+      log("RegisterUser: settingsPda=" + settingsPda.toBase58() + " bump=" + settingsBump);
+      log("RegisterUser: userPda=" + userPda.toBase58() + " bump=" + userBump);
+
       const data = IX_REGISTER;
 
       const ix = new solanaWeb3.TransactionInstruction({
@@ -179,7 +181,6 @@
     }
 
     async function sendClaimIx() {
-      // Derive all PDAs + read from settings if needed:
       const [settingsPda,  settingsBump] =
         await solanaWeb3.PublicKey.findProgramAddress(
           [new TextEncoder().encode("settings")],
@@ -199,17 +200,22 @@
       // Hardcode the mint (matching HARDCODED_MINT_STR in the contract)
       const mintPubkey = new solanaWeb3.PublicKey("AgzJtvzqQ2ZP5fXo3DmJq5Hv1Tz1Vm4tAg8fPNgHAHDa");
 
-      // The user’s associated token account for that mint
-      // In real usage, you'd typically use @solana/spl-token's getAssociatedTokenAddress
-      // or do a manual PD address. We'll skip it for brevity or do a placeholder:
-      // ...
       const associatedTokenAccount = await findAssociatedTokenAddress(
         walletPublicKey,
         mintPubkey
       );
 
       // The civic gateway token address
-      const gatewayTokenAddress = new solanaWeb3.PublicKey("uniqobk8oGh4XBLMqM68K8M2zNu3CdYX7q5go7whQiv");
+      const gatewayTokenStr = "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx"; 
+      const gatewayTokenAddress = new solanaWeb3.PublicKey(gatewayTokenStr);
+
+      // Log all addresses to see if any are null/undefined
+      log("CLAIM: settingsPda=" + (settingsPda?.toBase58?.() || settingsPda));
+      log("CLAIM: userPda=" + (userPda?.toBase58?.() || userPda));
+      log("CLAIM: mintAuthPda=" + (mintAuthPda?.toBase58?.() || mintAuthPda));
+      log("CLAIM: mintPubkey=" + (mintPubkey?.toBase58?.() || mintPubkey));
+      log("CLAIM: associatedTokenAccount=" + (associatedTokenAccount?.toBase58?.() || associatedTokenAccount));
+      log("CLAIM: gatewayTokenAddress=" + (gatewayTokenAddress?.toBase58?.() || gatewayTokenAddress));
 
       const keys = [
         { pubkey: settingsPda,       isSigner: false, isWritable: false },
