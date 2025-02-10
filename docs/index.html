@@ -263,7 +263,7 @@
     const mintPk = new solanaWeb3.PublicKey(mintStr);
 
     // A small utility to derive the ATA if you don't have @solana/spl-token
-    async function findAssociatedTokenAddress(walletPk, mintPk) {
+    async function findAssociatedTokenAddress(walletPk, _mintPk) {
       const [pda] = await solanaWeb3.PublicKey.findProgramAddress(
         [
           userPk.toBuffer(),
