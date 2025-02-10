@@ -15,12 +15,9 @@
 
   <pre id="log"></pre>
 
-  <!-- Load the ESM build of solana-web3.js from unpkg -->
-  <script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.browser.esm.js" type="module"></script>
-  <script type="module">
-    // Because we're using the ESM build, we must import the module:
-    import * as solanaWeb3 from "https://unpkg.com/@solana/web3.js@1.98.0/lib/index.browser.esm.js";
-
+  <!-- Load solana-web3.js from a CDN -->
+  <script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.js"></script>
+  <script>
     // 1) Program info
     const PROGRAM_ID = new solanaWeb3.PublicKey("2UNUba4NggvTpcT2XJPVXCyAFHFm89hMLKGof7qwuBnH");
 
@@ -189,26 +186,23 @@
     // -------------------------------------------
     async function sendClaimIx() {
       // Derive PDAs
-      const [settingsPda, settingsBump] =
-        await solanaWeb3.PublicKey.findProgramAddress(
-          [new TextEncoder().encode("settings")],
-          PROGRAM_ID
-        );
-      const [userPda, userBump] =
-        await solanaWeb3.PublicKey.findProgramAddress(
-          [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
-          PROGRAM_ID
-        );
-      const [mintAuthPda, mintAuthBump] =
-        await solanaWeb3.PublicKey.findProgramAddress(
-          [new TextEncoder().encode("settings"), new TextEncoder().encode("mint_authority")],
-          PROGRAM_ID
-        );
+      const [settingsPda, settingsBump] = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode("settings")],
+        PROGRAM_ID
+      );
+      const [userPda, userBump] = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
+        PROGRAM_ID
+      );
+      const [mintAuthPda, mintAuthBump] = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode("settings"), new TextEncoder().encode("mint_authority")],
+        PROGRAM_ID
+      );
 
       // Hardcode the mint (matching HARDCODED_MINT_STR in the contract)
       const mintPubkey = new solanaWeb3.PublicKey("AgzJtvzqQ2ZP5fXo3DmJq5Hv1Tz1Vm4tAg8fPNgHAHDa");
 
-      // The user’s associated token account
+      // The user’s associated token account for that mint
       const associatedTokenAccount = await findAssociatedTokenAddress(
         walletPublicKey,
         mintPubkey
@@ -218,13 +212,13 @@
       const gatewayTokenStr = "91y3Lsf3MBq6CqGAEt7g5St49wHYLiwycfFQ5j7Z9iMx"; 
       const gatewayTokenAddress = new solanaWeb3.PublicKey(gatewayTokenStr);
 
-      // Log all addresses
-      log("CLAIM: settingsPda        = " + (settingsPda?.toBase58?.() || settingsPda));
-      log("CLAIM: userPda            = " + (userPda?.toBase58?.() || userPda));
-      log("CLAIM: mintAuthPda        = " + (mintAuthPda?.toBase58?.() || mintAuthPda));
-      log("CLAIM: mintPubkey         = " + (mintPubkey?.toBase58?.() || mintPubkey));
+      // Log all addresses to see if any are null/undefined
+      log("CLAIM: settingsPda       = " + (settingsPda?.toBase58?.() || settingsPda));
+      log("CLAIM: userPda           = " + (userPda?.toBase58?.() || userPda));
+      log("CLAIM: mintAuthPda       = " + (mintAuthPda?.toBase58?.() || mintAuthPda));
+      log("CLAIM: mintPubkey        = " + (mintPubkey?.toBase58?.() || mintPubkey));
       log("CLAIM: associatedTokenAcct= " + (associatedTokenAccount?.toBase58?.() || associatedTokenAccount));
-      log("CLAIM: gatewayTokenAddr   = " + (gatewayTokenAddress?.toBase58?.() || gatewayTokenAddress));
+      log("CLAIM: gatewayTokenAddr  = " + (gatewayTokenAddress?.toBase58?.() || gatewayTokenAddress));
 
       const keys = [
         { pubkey: settingsPda,         isSigner: false, isWritable: false },
@@ -251,6 +245,7 @@
       tx.feePayer = walletPublicKey;
       tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
 
+      // sign & send
       const signedTx = await window.solana.signTransaction(tx);
       const txSig = await connection.sendRawTransaction(signedTx.serialize());
       await connection.confirmTransaction(txSig);
