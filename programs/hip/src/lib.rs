@@ -8,7 +8,7 @@ use solana_gateway::Gateway; // For verifying the gateway token
 use std::str::FromStr;
 
 // Your program ID
-declare_id!("5XSKqwJreC1qdS96s6MSajbN4ts8oVrZ1S1r1BxKGWLH");
+declare_id!("2UNUba4NggvTpcT2XJPVXCyAFHFm89hMLKGof7qwuBnH");
 
 // Seeds & Constants
 pub const SETTINGS_SEED: &[u8] = b"settings";
@@ -16,7 +16,7 @@ pub const USER_SEED: &[u8] = b"user";
 pub const MINT_AUTH_SEED: &[u8] = b"mint_authority";
 
 // The SPL mint you want to use forever
-pub const HARDCODED_MINT_STR: &str = "58Ha7cnAzZ2V7t66ECAdBfy6fAxoFFwEwZP8eU7nrHHA";
+pub const HARDCODED_MINT_STR: &str = "AgzJtvzqQ2ZP5fXo3DmJq5Hv1Tz1Vm4tAg8fPNgHAHDa";
 const HARDCODED_DAILY_AMOUNT: u64 = 1440;
 pub const COOLDOWN_SECONDS: i64 = 300; // 5 minutes
 
