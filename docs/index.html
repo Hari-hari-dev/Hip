@@ -186,11 +186,11 @@
           [new TextEncoder().encode("settings")],
           PROGRAM_ID
         );
-      log("CLAIM: walletPublicKey=" + (walletPublicKey.toBase58?.()));
+      log("CLAIM: walletPublicKey=" + (walletPublicKey.toBuffer()));
 
       const [userPda, userBump] =
         await solanaWeb3.PublicKey.findProgramAddress(
-          [new TextEncoder().encode("user"), walletPublicKey.toBase58?.()],
+          [new TextEncoder().encode("user"), walletPublicKey.toBuffer()],
           PROGRAM_ID
         );
       const [mintAuthPda, mintAuthBump] =
